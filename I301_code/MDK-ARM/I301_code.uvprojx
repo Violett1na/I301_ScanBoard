@@ -406,6 +406,11 @@
               <FilePath>../Core/Src/gpio.c</FilePath>
             </File>
             <File>
+              <FileName>software_iic.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/software_iic.c</FilePath>
+            </File>
+            <File>
               <FileName>usart.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/usart.c</FilePath>

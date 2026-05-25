@@ -31,7 +31,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -57,6 +57,30 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define X_SCL1_Pin GPIO_PIN_0
+#define X_SCL1_GPIO_Port GPIOC
+#define X_SDA1_Pin GPIO_PIN_1
+#define X_SDA1_GPIO_Port GPIOC
+#define X_SDA2_Pin GPIO_PIN_2
+#define X_SDA2_GPIO_Port GPIOC
+#define X_SCL2_Pin GPIO_PIN_3
+#define X_SCL2_GPIO_Port GPIOC
+#define X_SDA3_Pin GPIO_PIN_4
+#define X_SDA3_GPIO_Port GPIOC
+#define X_SCL3_Pin GPIO_PIN_5
+#define X_SCL3_GPIO_Port GPIOC
+#define Y_SCL1_Pin GPIO_PIN_7
+#define Y_SCL1_GPIO_Port GPIOC
+#define Y_SDA1_Pin GPIO_PIN_8
+#define Y_SDA1_GPIO_Port GPIOC
+#define Y_SCL2_Pin GPIO_PIN_9
+#define Y_SCL2_GPIO_Port GPIOC
+#define Y_SDA2_Pin GPIO_PIN_10
+#define Y_SDA2_GPIO_Port GPIOC
+#define Y_SCL3_Pin GPIO_PIN_11
+#define Y_SCL3_GPIO_Port GPIOC
+#define Y_SDA3_Pin GPIO_PIN_12
+#define Y_SDA3_GPIO_Port GPIOC
 
 /* USER CODE BEGIN Private defines */
 
