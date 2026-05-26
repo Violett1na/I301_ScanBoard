@@ -32,6 +32,7 @@ extern "C" {
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include "mylog.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -69,6 +70,14 @@ void Error_Handler(void);
 #define X_SDA3_GPIO_Port GPIOC
 #define X_SCL3_Pin GPIO_PIN_5
 #define X_SCL3_GPIO_Port GPIOC
+#define LED_USB_Pin GPIO_PIN_0
+#define LED_USB_GPIO_Port GPIOB
+#define LED_X_Pin GPIO_PIN_1
+#define LED_X_GPIO_Port GPIOB
+#define LED_Y_Pin GPIO_PIN_2
+#define LED_Y_GPIO_Port GPIOB
+#define CS_Pin GPIO_PIN_6
+#define CS_GPIO_Port GPIOC
 #define Y_SCL1_Pin GPIO_PIN_7
 #define Y_SCL1_GPIO_Port GPIOC
 #define Y_SDA1_Pin GPIO_PIN_8

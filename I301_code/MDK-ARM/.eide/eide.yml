@@ -25,7 +25,7 @@ virtualFolder:
                 - path: ../Core/Src/usart.c
                 - path: ../Core/Src/stm32g4xx_it.c
                 - path: ../Core/Src/stm32g4xx_hal_msp.c
-                - path: ../Core/Src/software_iic.c
+                - path: ../Core/Src/mylog.c
               folders: []
     - name: Drivers
       files: []

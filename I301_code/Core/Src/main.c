@@ -94,6 +94,9 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+  LOG_SYS_INFO("Build Time: %s  %s \n", __DATE__, __TIME__);
+
   while (1)
   {
     /* USER CODE END WHILE */
