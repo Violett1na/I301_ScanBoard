@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(python -c \"import fitz; doc=fitz.open\\(r'F:\\\\clone_data\\\\I301\\\\I301_code\\\\doc\\\\I301X.pdf'\\); print\\(f'pages={doc.page_count}'\\); page=doc[1]; print\\(page.get_text\\(\\)\\)\" 2>&1 | head -200)",
+      "Bash(python -c \"\nimport fitz\ndoc = fitz.open\\(r'F:\\\\clone_data\\\\I301\\\\I301_code\\\\doc\\\\I301X.pdf'\\)\nprint\\(f'Total pages: {doc.page_count}'\\)\nfor i in range\\(doc.page_count\\):\n    page = doc[i]\n    text = page.get_text\\(\\)\n    print\\(f'--- Page {i+1} ---'\\)\n    print\\(text[:800]\\)\n    print\\(\\)\n\" 2>&1)"
+    ]
+  }
+}

@@ -26,6 +26,7 @@ virtualFolder:
                 - path: ../Core/Src/stm32g4xx_it.c
                 - path: ../Core/Src/stm32g4xx_hal_msp.c
                 - path: ../Core/Src/mylog.c
+                - path: ../Core/Src/ad5290.c
               folders: []
     - name: Drivers
       files: []
