@@ -19,7 +19,7 @@
 *.uvmpw
 *.log*
 
-.vscode/
+
 Templates/
 code.si4project/
 !*.uvprojx
