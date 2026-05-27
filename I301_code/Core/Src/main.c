@@ -121,7 +121,8 @@ int main(void)
 	  {
 		  //一次性清除所有通道的标志
 		  DMA1->IFCR = DMA_IFCR_CTCIF1 | DMA_IFCR_CTCIF2 | DMA_IFCR_CTCIF3 | DMA_IFCR_CTCIF4;
-      LOG_SYS_INFO("DMA1 TCIF1/2/3/4 cleared");
+      LOG_SYS_INFO("adc_value: vx = %04d, vy = %04d, ix = %04d, iy = %04d", 
+                  adc_value.vx, adc_value.vy, adc_value.ix, adc_value.iy);
     }
 
     /* USER CODE END WHILE */

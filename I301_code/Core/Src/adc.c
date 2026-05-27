@@ -444,10 +444,10 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
     /**ADC5 GPIO Configuration
     PA9     ------> ADC5_IN2
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_9;
+    GPIO_InitStruct.Pin = ADC_IY_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+    HAL_GPIO_Init(ADC_IY_GPIO_Port, &GPIO_InitStruct);
 
     /* ADC5 DMA Init */
     /* ADC5 Init */
@@ -553,7 +553,7 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
     /**ADC5 GPIO Configuration
     PA9     ------> ADC5_IN2
     */
-    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_9);
+    HAL_GPIO_DeInit(ADC_IY_GPIO_Port, ADC_IY_Pin);
 
     /* ADC5 DMA DeInit */
     HAL_DMA_DeInit(adcHandle->DMA_Handle);
@@ -564,93 +564,18 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
 }
 
 /* USER CODE BEGIN 1 */
-/*ADC偏移校准*/
+/* ADC偏移校准 */
 void ADC_Offset_Calibration(ADC_HandleTypeDef *hadc)
 {
-	uint8_t retry_count = 0;
-
-	while (retry_count < ADC_MAX_RETRIES)
+	for (uint8_t retry = 0; retry < ADC_MAX_RETRIES; retry++)
 	{
-		/* 检查并复位ADC状态*/
-		if (hadc->State != HAL_ADC_STATE_READY)
+		if (HAL_ADCEx_Calibration_Start(hadc, ADC_SINGLE_ENDED) == HAL_OK)
 		{
-			HAL_ADC_DeInit(hadc);
-			if (HAL_ADC_Init(hadc) != HAL_OK)
-			{
-				retry_count++;
-				continue;
-			}
-		}
-
-		/* 启动偏移校准 */
-		if (HAL_ADCEx_Calibration_Start(hadc,  ADC_SINGLE_ENDED) != HAL_OK)
-		{
-			retry_count++;
-			continue;
-		}
-
-		/*等待校准完成 */
-		uint32_t tickstart = HAL_GetTick();
-		while (HAL_IS_BIT_SET(hadc->Instance->CR, ADC_CR_ADCAL))
-		{
-			if ((HAL_GetTick() - tickstart) > ADC_CALIBRATION_TIMEOUT)
-			{
-				retry_count++;
-				break;
-			}
-		}
-
-		/* 如果校准未完成，继续下一次尝试  */
-		if (retry_count >= ADC_MAX_RETRIES)
-		{
-			break;
-		}
-
-		/* 读取校准值 */
-		uint32_t calibrationValue = HAL_ADCEx_Calibration_GetValue(hadc, ADC_SINGLE_ENDED);
-
-		/* 验证校准值 */
-		if (calibrationValue > 0xFFF) // 12位ADC的校准值不应超过0xFFF
-		{
-			calibrationValue = 0x200; // 使用默认值
-		}
-
-		/* 设置校准值*/
-		if (HAL_ADCEx_Calibration_SetValue(hadc, ADC_SINGLE_ENDED, calibrationValue) == HAL_OK)
-		{
-			/*校准成功，退出循环*/
 			return;
 		}
-
-		/* 如果HAL函数失败，直接操作寄存器 */
-		__HAL_ADC_RESET_HANDLE_STATE(hadc);
-
-		/* 等待ADC就绪 */
-		tickstart = HAL_GetTick();
-		while (hadc->Instance->CR & ADC_CR_ADEN)
-		{
-			if ((HAL_GetTick() - tickstart) > ADC_CALIBRATION_TIMEOUT)
-			{
-				retry_count++;
-				break;
-			}
-		}
-
-		/*直接写入校准寄存器 */
-		hadc->Instance->CALFACT = calibrationValue;
-
-		/* 验证校准值是否写入成功 */
-		if (hadc->Instance->CALFACT == calibrationValue)
-		{
-			/* 校准成功，退出循环 */
-			return;
-		}
-
-		/* 增加重试计数 */
-		retry_count++;
+		HAL_ADC_DeInit(hadc);
+		HAL_ADC_Init(hadc);
 	}
-
-	/* 如果所有重试都失败，报错处理 */
 	Error_Handler();
 }
 /* USER CODE END 1 */

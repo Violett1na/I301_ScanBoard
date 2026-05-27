@@ -1,10 +1,7 @@
 #include "task.h"
 
 
-uint16_t adc2_value = 0;
-uint16_t adc3_value = 0;
-uint16_t adc4_value = 0;
-uint16_t adc5_value = 0;
+adc_value_t adc_value;
 
 void AD_DA_Init(void)
 {
@@ -26,10 +23,10 @@ void AD_DA_Init(void)
     // hdac3.Instance->DHR12R2 = 0;
 	// hdac4.Instance->DHR12R1 = 0;
 	/*启动ADC的DMA传输*/
-	HAL_ADC_Start_DMA(&hadc2, (uint32_t*)&adc2_value, 1);
-	HAL_ADC_Start_DMA(&hadc3, (uint32_t*)&adc3_value, 1);
-	HAL_ADC_Start_DMA(&hadc4, (uint32_t*)&adc4_value, 1);
-	HAL_ADC_Start_DMA(&hadc5, (uint32_t*)&adc5_value, 1);
+	HAL_ADC_Start_DMA(&hadc2, (uint32_t*)&adc_value.ix, 1);
+	HAL_ADC_Start_DMA(&hadc3, (uint32_t*)&adc_value.vx, 1);
+	HAL_ADC_Start_DMA(&hadc4, (uint32_t*)&adc_value.vy, 1);
+	HAL_ADC_Start_DMA(&hadc5, (uint32_t*)&adc_value.iy, 1);
 	HAL_Delay(10);
 	/*启动触发ADC的定时器*/
 	HAL_TIM_Base_Start(&htim3);

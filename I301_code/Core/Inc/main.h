@@ -90,6 +90,8 @@ void Error_Handler(void);
 #define Y_SDA1_GPIO_Port GPIOC
 #define Y_SCL2_Pin GPIO_PIN_9
 #define Y_SCL2_GPIO_Port GPIOC
+#define ADC_IY_Pin GPIO_PIN_9
+#define ADC_IY_GPIO_Port GPIOA
 #define Y_SDA2_Pin GPIO_PIN_10
 #define Y_SDA2_GPIO_Port GPIOC
 #define Y_SCL3_Pin GPIO_PIN_11
