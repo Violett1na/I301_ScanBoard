@@ -29,7 +29,6 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "ad5290.h"
 #include "task.h"
 
 /* USER CODE END Includes */
@@ -108,28 +107,32 @@ int main(void)
   MX_DAC4_Init();
   MX_OPAMP4_Init();
   MX_OPAMP5_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
-
-  AD5290_Init();
+  LOG_SYS_INFO("===================================================");
+  ad5290_set_init();
   AD_DA_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-
-  LOG_SYS_INFO("Build Time: %s  %s \n", __DATE__, __TIME__);
+  LOG_SYS_INFO("Build Time: %s  %s", __DATE__, __TIME__);
   while (1)
   {
     if (DMA1->ISR & (DMA_ISR_TCIF1 | DMA_ISR_TCIF2 | DMA_ISR_TCIF3 | DMA_ISR_TCIF4))
 	  {
 		  //一次性清除所有通道的标志
 		  DMA1->IFCR = DMA_IFCR_CTCIF1 | DMA_IFCR_CTCIF2 | DMA_IFCR_CTCIF3 | DMA_IFCR_CTCIF4;
-      // LOG_SYS_INFO("adc_value: vx = %04d, vy = %04d, ix = %04d, iy = %04d", 
+      // LOG_SYS_INFO("adc: vx = %04d, vy = %04d, ix = %04d, iy = %04d", 
       //             adc_value.vx, adc_value.vy, adc_value.ix, adc_value.iy);
       DAC_INX_SET(4095 - adc_value.vx);
       DAC_INY_SET(4095 - adc_value.vy);
     }
-
+    // if (DMA2->ISR & DMA_ISR_TCIF1)
+    // {
+    //   DMA2->IFCR = DMA_IFCR_CTCIF1;
+    //   LOG_SYS_INFO("adc: fbx = %04d, fby = %04d", adc_value.fb.x, adc_value.fb.y);
+    // }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

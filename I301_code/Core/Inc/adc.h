@@ -32,6 +32,8 @@ extern "C" {
 
 /* USER CODE END Includes */
 
+extern ADC_HandleTypeDef hadc1;
+
 extern ADC_HandleTypeDef hadc2;
 
 extern ADC_HandleTypeDef hadc3;
@@ -45,6 +47,7 @@ extern ADC_HandleTypeDef hadc5;
 #define ADC_MAX_RETRIES         3   //最大重试次数，用于ADC校准失败时的重试机制
 /* USER CODE END Private defines */
 
+void MX_ADC1_Init(void);
 void MX_ADC2_Init(void);
 void MX_ADC3_Init(void);
 void MX_ADC4_Init(void);

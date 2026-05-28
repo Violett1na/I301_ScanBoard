@@ -35,8 +35,8 @@ static const ad5290_pin_t s_pins[AD5290_TOTAL_NUM] = {
 
 /* 各通道满量程电阻，用于欧姆 → 码值换算 */
 static const float s_rab[AD5290_TOTAL_NUM] = {
-    AD5290_RAB_100K,  AD5290_RAB_100K,  AD5290_RAB_100K,
-    AD5290_RAB_100K,  AD5290_RAB_100K,  AD5290_RAB_100K,
+    AD5290_RAB_10K,  AD5290_RAB_10K,  AD5290_RAB_100K,
+    AD5290_RAB_10K,  AD5290_RAB_10K,  AD5290_RAB_100K,
 };
 
 /* 影子寄存器：AD5290 不支持回读，缓存最近一次写入值供查询使用 */

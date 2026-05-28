@@ -68,6 +68,10 @@ void Error_Handler(void);
 #define X_SCL2_GPIO_Port GPIOC
 #define ADC_IX_Pin GPIO_PIN_0
 #define ADC_IX_GPIO_Port GPIOA
+#define ADC_FBX_Pin GPIO_PIN_2
+#define ADC_FBX_GPIO_Port GPIOA
+#define ADC_FBY_Pin GPIO_PIN_3
+#define ADC_FBY_GPIO_Port GPIOA
 #define DA_INX_Pin GPIO_PIN_4
 #define DA_INX_GPIO_Port GPIOA
 #define DA_FBX_Pin GPIO_PIN_5

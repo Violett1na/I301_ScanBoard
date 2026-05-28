@@ -6,6 +6,8 @@ volatile adc_value_t adc_value;
 void AD_DA_Init(void)
 {
 	/*执行ADC偏移校准*/
+	ADC_Offset_Calibration(&hadc1);
+
 	ADC_Offset_Calibration(&hadc2);
 	ADC_Offset_Calibration(&hadc3);
 	ADC_Offset_Calibration(&hadc4);
@@ -28,13 +30,20 @@ void AD_DA_Init(void)
 	HAL_ADC_Start_DMA(&hadc3, (uint32_t*)&adc_value.vx, 1);
 	HAL_ADC_Start_DMA(&hadc4, (uint32_t*)&adc_value.vy, 1);
 	HAL_ADC_Start_DMA(&hadc5, (uint32_t*)&adc_value.iy, 1);
+
+	// HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adc_value.fb, 2);
 	HAL_Delay(10);
 	/*启动触发ADC的定时器*/
 	HAL_TIM_Base_Start(&htim3);
 }
 
 
+void ad5290_set_init(void)
+{
+  	AD5290_Init();
 
+	
+}
 
 
 
