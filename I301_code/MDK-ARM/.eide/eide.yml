@@ -34,6 +34,7 @@ virtualFolder:
                 - path: ../Core/Src/dma.c
                 - path: ../Core/Src/system_stm32g4xx.c
                 - path: ../Core/Src/task.c
+                - path: ../Core/Src/opamp.c
               folders: []
     - name: Drivers
       files: []
@@ -65,6 +66,8 @@ virtualFolder:
             - path: ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_adc.c
             - path: ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_adc_ex.c
             - path: ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_ll_adc.c
+            - path: ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_opamp.c
+            - path: ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_opamp_ex.c
           folders: []
         - name: CMSIS
           files:
@@ -105,28 +108,21 @@ targets:
           afterBuildTasks: []
           asm-compiler:
             $use: asm-auto
-            defines: []
-            misc-controls: ""
           beforeBuildTasks: []
           c/cpp-compiler:
             language-c: c99
             language-cpp: c++11
-            link-time-optimization: false
             one-elf-section-per-function: true
-            optimization: level-3
+            optimization: level-0
             short-enums#wchar: true
             warnings: ac5-like-warnings
           global:
             output-debug-info: enable
-            use-microLIB: false
           linker:
             $outputTaskExcludes:
               - .bin
             misc-controls: --diag_suppress=L6329
             output-format: elf
-            ro-base: ""
-            rw-base: ""
-            xo-base: ""
         scatterFilePath: stm32g474xx_flash.sct
         storageLayout:
           RAM:

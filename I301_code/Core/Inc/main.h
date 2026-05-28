@@ -68,6 +68,10 @@ void Error_Handler(void);
 #define X_SCL2_GPIO_Port GPIOC
 #define ADC_IX_Pin GPIO_PIN_0
 #define ADC_IX_GPIO_Port GPIOA
+#define DA_INX_Pin GPIO_PIN_4
+#define DA_INX_GPIO_Port GPIOA
+#define DA_FBX_Pin GPIO_PIN_5
+#define DA_FBX_GPIO_Port GPIOA
 #define X_SDA3_Pin GPIO_PIN_4
 #define X_SDA3_GPIO_Port GPIOC
 #define X_SCL3_Pin GPIO_PIN_5
@@ -78,6 +82,8 @@ void Error_Handler(void);
 #define LED_X_GPIO_Port GPIOB
 #define LED_Y_Pin GPIO_PIN_2
 #define LED_Y_GPIO_Port GPIOB
+#define DA_INY_Pin GPIO_PIN_12
+#define DA_INY_GPIO_Port GPIOB
 #define ADC_VX_Pin GPIO_PIN_13
 #define ADC_VX_GPIO_Port GPIOB
 #define ADC_VY_Pin GPIO_PIN_15
@@ -90,6 +96,8 @@ void Error_Handler(void);
 #define Y_SDA1_GPIO_Port GPIOC
 #define Y_SCL2_Pin GPIO_PIN_9
 #define Y_SCL2_GPIO_Port GPIOC
+#define DA_FBY_Pin GPIO_PIN_8
+#define DA_FBY_GPIO_Port GPIOA
 #define ADC_IY_Pin GPIO_PIN_9
 #define ADC_IY_GPIO_Port GPIOA
 #define Y_SDA2_Pin GPIO_PIN_10

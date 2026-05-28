@@ -21,6 +21,7 @@
 #include "adc.h"
 #include "dac.h"
 #include "dma.h"
+#include "opamp.h"
 #include "tim.h"
 #include "usart.h"
 #include "usb.h"
@@ -104,6 +105,9 @@ int main(void)
   MX_ADC2_Init();
   MX_TIM3_Init();
   MX_ADC5_Init();
+  MX_DAC4_Init();
+  MX_OPAMP4_Init();
+  MX_OPAMP5_Init();
   /* USER CODE BEGIN 2 */
 
   AD5290_Init();
@@ -114,15 +118,16 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 
   LOG_SYS_INFO("Build Time: %s  %s \n", __DATE__, __TIME__);
-
   while (1)
   {
     if (DMA1->ISR & (DMA_ISR_TCIF1 | DMA_ISR_TCIF2 | DMA_ISR_TCIF3 | DMA_ISR_TCIF4))
 	  {
 		  //一次性清除所有通道的标志
 		  DMA1->IFCR = DMA_IFCR_CTCIF1 | DMA_IFCR_CTCIF2 | DMA_IFCR_CTCIF3 | DMA_IFCR_CTCIF4;
-      LOG_SYS_INFO("adc_value: vx = %04d, vy = %04d, ix = %04d, iy = %04d", 
-                  adc_value.vx, adc_value.vy, adc_value.ix, adc_value.iy);
+      // LOG_SYS_INFO("adc_value: vx = %04d, vy = %04d, ix = %04d, iy = %04d", 
+      //             adc_value.vx, adc_value.vy, adc_value.ix, adc_value.iy);
+      DAC_INX_SET(4095 - adc_value.vx);
+      DAC_INY_SET(4095 - adc_value.vy);
     }
 
     /* USER CODE END WHILE */

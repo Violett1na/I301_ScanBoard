@@ -5,9 +5,13 @@
 #include "adc.h"
 #include "dac.h"
 #include "tim.h"
+#include "dac.h"
+#include "opamp.h"
 
-
-
+#define DAC_INX_SET(val)    (hdac1.Instance->DHR12R1 = (val))
+#define DAC_FBX_SET(val)    (hdac1.Instance->DHR12R2 = (val))
+#define DAC_INY_SET(val)    (hdac4.Instance->DHR12R1 = (val))
+#define DAC_FBY_SET(val)    (hdac4.Instance->DHR12R2 = (val))
 typedef struct
 {
     uint16_t vx;
@@ -18,7 +22,7 @@ typedef struct
 } adc_value_t;
 
 
-extern adc_value_t adc_value;
+extern volatile adc_value_t adc_value;
 
 
 void AD_DA_Init(void);
