@@ -3,6 +3,7 @@
 
 volatile adc_value_t adc_value;
 
+/*  初始化函数  */
 void AD_DA_Init(void)
 {
 	/*执行ADC偏移校准*/
@@ -35,6 +36,7 @@ void AD_DA_Init(void)
 	HAL_Delay(10);
 	/*启动触发ADC的定时器*/
 	HAL_TIM_Base_Start(&htim3);
+	// HAL_TIM_Base_Start(&htim2);
 }
 
 
@@ -44,8 +46,17 @@ void ad5290_set_init(void)
 
 	
 }
+/*****************************************************/
 
-
+/*  定时器任务  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
+{
+	if(htim->Instance == TIM2)
+	{
+		DAC_FBX_SET(2048);
+		DAC_FBY_SET(2048);
+	}
+}
 
 
 

@@ -97,7 +97,6 @@ int main(void)
   MX_DMA_Init();
   MX_USART1_UART_Init();
   MX_DAC1_Init();
-  MX_TIM6_Init();
   MX_USB_PCD_Init();
   MX_ADC3_Init();
   MX_ADC4_Init();
@@ -108,10 +107,11 @@ int main(void)
   MX_OPAMP4_Init();
   MX_OPAMP5_Init();
   MX_ADC1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   LOG_SYS_INFO("===================================================");
   ad5290_set_init();
-  AD_DA_Init();
+  // AD_DA_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
