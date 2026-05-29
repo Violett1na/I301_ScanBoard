@@ -3,7 +3,9 @@ name: I301_code
 type: ARM
 deviceName: null
 packDir: null
-srcDirs: []
+srcDirs:
+  - ../USB
+  - ../Proto
 virtualFolder:
   name: <virtual_root>
   files: []
@@ -29,7 +31,6 @@ virtualFolder:
                 - path: ../Core/Src/ad5290.c
                 - path: ../Core/Src/dac.c
                 - path: ../Core/Src/tim.c
-                - path: ../Core/Src/usb.c
                 - path: ../Core/Src/adc.c
                 - path: ../Core/Src/dma.c
                 - path: ../Core/Src/system_stm32g4xx.c
@@ -94,6 +95,8 @@ targets:
         - ../Drivers/CMSIS/Include
         - .cmsis/include
         - RTE/_I301_code
+        - ../USB/inc
+        - ../Proto/Inc
       libList: []
     excludeList: []
     settings: {}

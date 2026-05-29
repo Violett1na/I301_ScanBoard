@@ -24,12 +24,12 @@
 #include "opamp.h"
 #include "tim.h"
 #include "usart.h"
-#include "usb.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "task.h"
+#include "usb_device.h"
 
 /* USER CODE END Includes */
 
@@ -97,7 +97,6 @@ int main(void)
   MX_DMA_Init();
   MX_USART1_UART_Init();
   MX_DAC1_Init();
-  MX_USB_PCD_Init();
   MX_ADC3_Init();
   MX_ADC4_Init();
   MX_ADC2_Init();
@@ -112,6 +111,7 @@ int main(void)
   LOG_SYS_INFO("===================================================");
   ad5290_set_init();
   // AD_DA_Init();
+  MX_USB_DEVICE_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -156,9 +156,8 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48|RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV5;

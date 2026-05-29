@@ -38,7 +38,7 @@
 
 /* USER CODE END PV */
 
-PCD_HandleTypeDef hpcd_USB_OTG_FS;
+PCD_HandleTypeDef hpcd_USB_FS;
 void Error_Handler(void);
 
 /* External functions --------------------------------------------------------*/
@@ -65,73 +65,51 @@ USBD_StatusTypeDef USBD_Get_USB_Status(HAL_StatusTypeDef hal_status);
 
 void HAL_PCD_MspInit(PCD_HandleTypeDef* pcdHandle)
 {
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
-  if(pcdHandle->Instance==USB_OTG_FS)
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+  if(pcdHandle->Instance == USB)
   {
-  /* USER CODE BEGIN USB_OTG_FS_MspInit 0 */
+  /* USER CODE BEGIN USB_MspInit 0 */
 
-  /* USER CODE END USB_OTG_FS_MspInit 0 */
+  /* USER CODE END USB_MspInit 0 */
 
   /** Initializes the peripherals clock
   */
-    PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USB;
-    PeriphClkInitStruct.UsbClockSelection = RCC_USBCLKSOURCE_HSI48;
-    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
+    PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB;
+    PeriphClkInit.UsbClockSelection    = RCC_USBCLKSOURCE_HSI48;
+    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
     {
       Error_Handler();
     }
 
-  /** Enable USB Voltage detector
-  */
-    HAL_PWREx_EnableUSBVoltageDetector();
-
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    /**USB_OTG_FS GPIO Configuration
-    PA11     ------> USB_OTG_FS_DM
-    PA12     ------> USB_OTG_FS_DP
-    */
-    GPIO_InitStruct.Pin = GPIO_PIN_11|GPIO_PIN_12;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF10_OTG1_FS;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    /* Peripheral clock enable */
-    __HAL_RCC_USB_OTG_FS_CLK_ENABLE();
+    /* USB clock enable */
+    __HAL_RCC_USB_CLK_ENABLE();
 
     /* Peripheral interrupt init */
-    HAL_NVIC_SetPriority(OTG_FS_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(OTG_FS_IRQn);
-  /* USER CODE BEGIN USB_OTG_FS_MspInit 1 */
+    HAL_NVIC_SetPriority(USB_LP_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(USB_LP_IRQn);
 
-  /* USER CODE END USB_OTG_FS_MspInit 1 */
+  /* USER CODE BEGIN USB_MspInit 1 */
+
+  /* USER CODE END USB_MspInit 1 */
   }
 }
 
 void HAL_PCD_MspDeInit(PCD_HandleTypeDef* pcdHandle)
 {
-  if(pcdHandle->Instance==USB_OTG_FS)
+  if(pcdHandle->Instance == USB)
   {
-  /* USER CODE BEGIN USB_OTG_FS_MspDeInit 0 */
+  /* USER CODE BEGIN USB_MspDeInit 0 */
 
-  /* USER CODE END USB_OTG_FS_MspDeInit 0 */
+  /* USER CODE END USB_MspDeInit 0 */
     /* Peripheral clock disable */
-    __HAL_RCC_USB_OTG_FS_CLK_DISABLE();
-
-    /**USB_OTG_FS GPIO Configuration
-    PA11     ------> USB_OTG_FS_DM
-    PA12     ------> USB_OTG_FS_DP
-    */
-    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_11|GPIO_PIN_12);
+    __HAL_RCC_USB_CLK_DISABLE();
 
     /* Peripheral interrupt Deinit*/
-    HAL_NVIC_DisableIRQ(OTG_FS_IRQn);
+    HAL_NVIC_DisableIRQ(USB_LP_IRQn);
 
-  /* USER CODE BEGIN USB_OTG_FS_MspDeInit 1 */
+  /* USER CODE BEGIN USB_MspDeInit 1 */
 
-  /* USER CODE END USB_OTG_FS_MspDeInit 1 */
+  /* USER CODE END USB_MspDeInit 1 */
   }
 }
 
@@ -204,22 +182,8 @@ static void PCD_ResetCallback(PCD_HandleTypeDef *hpcd)
 void HAL_PCD_ResetCallback(PCD_HandleTypeDef *hpcd)
 #endif /* USE_HAL_PCD_REGISTER_CALLBACKS */
 {
-  USBD_SpeedTypeDef speed = USBD_SPEED_FULL;
-
-  if ( hpcd->Init.speed == PCD_SPEED_HIGH)
-  {
-    speed = USBD_SPEED_HIGH;
-  }
-  else if ( hpcd->Init.speed == PCD_SPEED_FULL)
-  {
-    speed = USBD_SPEED_FULL;
-  }
-  else
-  {
-    Error_Handler();
-  }
-    /* Set Speed. */
-  USBD_LL_SetSpeed((USBD_HandleTypeDef*)hpcd->pData, speed);
+  /* G474 USB FS 仅支持 Full Speed */
+  USBD_LL_SetSpeed((USBD_HandleTypeDef*)hpcd->pData, USBD_SPEED_FULL);
 
   /* Reset Device. */
   USBD_LL_Reset((USBD_HandleTypeDef*)hpcd->pData);
@@ -227,7 +191,6 @@ void HAL_PCD_ResetCallback(PCD_HandleTypeDef *hpcd)
 
 /**
   * @brief  Suspend callback.
-  * When Low power mode is enabled the debug cannot be used (IAR, Keil doesn't support it)
   * @param  hpcd: PCD handle
   * @retval None
   */
@@ -237,14 +200,10 @@ static void PCD_SuspendCallback(PCD_HandleTypeDef *hpcd)
 void HAL_PCD_SuspendCallback(PCD_HandleTypeDef *hpcd)
 #endif /* USE_HAL_PCD_REGISTER_CALLBACKS */
 {
-  /* Inform USB library that core enters in suspend Mode. */
   USBD_LL_Suspend((USBD_HandleTypeDef*)hpcd->pData);
-  __HAL_PCD_GATE_PHYCLOCK(hpcd);
-  /* Enter in STOP mode. */
   /* USER CODE BEGIN 2 */
   if (hpcd->Init.low_power_enable)
   {
-    /* Set SLEEPDEEP bit and SleepOnExit of Cortex System Control Register. */
     SCB->SCR |= (uint32_t)((uint32_t)(SCB_SCR_SLEEPDEEP_Msk | SCB_SCR_SLEEPONEXIT_Msk));
   }
   /* USER CODE END 2 */
@@ -252,7 +211,6 @@ void HAL_PCD_SuspendCallback(PCD_HandleTypeDef *hpcd)
 
 /**
   * @brief  Resume callback.
-  * When Low power mode is enabled the debug cannot be used (IAR, Keil doesn't support it)
   * @param  hpcd: PCD handle
   * @retval None
   */
@@ -266,36 +224,6 @@ void HAL_PCD_ResumeCallback(PCD_HandleTypeDef *hpcd)
 
   /* USER CODE END 3 */
   USBD_LL_Resume((USBD_HandleTypeDef*)hpcd->pData);
-}
-
-/**
-  * @brief  ISOOUTIncomplete callback.
-  * @param  hpcd: PCD handle
-  * @param  epnum: Endpoint number
-  * @retval None
-  */
-#if (USE_HAL_PCD_REGISTER_CALLBACKS == 1U)
-static void PCD_ISOOUTIncompleteCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum)
-#else
-void HAL_PCD_ISOOUTIncompleteCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum)
-#endif /* USE_HAL_PCD_REGISTER_CALLBACKS */
-{
-  USBD_LL_IsoOUTIncomplete((USBD_HandleTypeDef*)hpcd->pData, epnum);
-}
-
-/**
-  * @brief  ISOINIncomplete callback.
-  * @param  hpcd: PCD handle
-  * @param  epnum: Endpoint number
-  * @retval None
-  */
-#if (USE_HAL_PCD_REGISTER_CALLBACKS == 1U)
-static void PCD_ISOINIncompleteCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum)
-#else
-void HAL_PCD_ISOINIncompleteCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum)
-#endif /* USE_HAL_PCD_REGISTER_CALLBACKS */
-{
-  USBD_LL_IsoINIncomplete((USBD_HandleTypeDef*)hpcd->pData, epnum);
 }
 
 /**
@@ -340,44 +268,43 @@ USBD_StatusTypeDef USBD_LL_Init(USBD_HandleTypeDef *pdev)
   /* Init USB Ip. */
   if (pdev->id == DEVICE_FS) {
   /* Link the driver to the stack. */
-  hpcd_USB_OTG_FS.pData = pdev;
-  pdev->pData = &hpcd_USB_OTG_FS;
+  hpcd_USB_FS.pData = pdev;
+  pdev->pData       = &hpcd_USB_FS;
 
-  hpcd_USB_OTG_FS.Instance = USB_OTG_FS;
-  hpcd_USB_OTG_FS.Init.dev_endpoints = 9;
-  hpcd_USB_OTG_FS.Init.speed = PCD_SPEED_FULL;
-  hpcd_USB_OTG_FS.Init.dma_enable = DISABLE;
-  hpcd_USB_OTG_FS.Init.phy_itface = PCD_PHY_EMBEDDED;
-  hpcd_USB_OTG_FS.Init.Sof_enable = DISABLE;
-  hpcd_USB_OTG_FS.Init.low_power_enable = DISABLE;
-  hpcd_USB_OTG_FS.Init.lpm_enable = DISABLE;
-  hpcd_USB_OTG_FS.Init.battery_charging_enable = DISABLE;
-  hpcd_USB_OTG_FS.Init.vbus_sensing_enable = DISABLE;
-  hpcd_USB_OTG_FS.Init.use_dedicated_ep1 = DISABLE;
-  if (HAL_PCD_Init(&hpcd_USB_OTG_FS) != HAL_OK)
+  hpcd_USB_FS.Instance                    = USB;
+  hpcd_USB_FS.Init.dev_endpoints          = 8;
+  hpcd_USB_FS.Init.speed                  = PCD_SPEED_FULL;
+  hpcd_USB_FS.Init.phy_itface             = PCD_PHY_EMBEDDED;
+  hpcd_USB_FS.Init.Sof_enable             = DISABLE;
+  hpcd_USB_FS.Init.low_power_enable       = DISABLE;
+  hpcd_USB_FS.Init.lpm_enable             = DISABLE;
+  hpcd_USB_FS.Init.battery_charging_enable = DISABLE;
+  if (HAL_PCD_Init(&hpcd_USB_FS) != HAL_OK)
   {
     Error_Handler( );
   }
 
 #if (USE_HAL_PCD_REGISTER_CALLBACKS == 1U)
   /* Register USB PCD CallBacks */
-  HAL_PCD_RegisterCallback(&hpcd_USB_OTG_FS, HAL_PCD_SOF_CB_ID, PCD_SOFCallback);
-  HAL_PCD_RegisterCallback(&hpcd_USB_OTG_FS, HAL_PCD_SETUPSTAGE_CB_ID, PCD_SetupStageCallback);
-  HAL_PCD_RegisterCallback(&hpcd_USB_OTG_FS, HAL_PCD_RESET_CB_ID, PCD_ResetCallback);
-  HAL_PCD_RegisterCallback(&hpcd_USB_OTG_FS, HAL_PCD_SUSPEND_CB_ID, PCD_SuspendCallback);
-  HAL_PCD_RegisterCallback(&hpcd_USB_OTG_FS, HAL_PCD_RESUME_CB_ID, PCD_ResumeCallback);
-  HAL_PCD_RegisterCallback(&hpcd_USB_OTG_FS, HAL_PCD_CONNECT_CB_ID, PCD_ConnectCallback);
-  HAL_PCD_RegisterCallback(&hpcd_USB_OTG_FS, HAL_PCD_DISCONNECT_CB_ID, PCD_DisconnectCallback);
+  HAL_PCD_RegisterCallback(&hpcd_USB_FS, HAL_PCD_SOF_CB_ID, PCD_SOFCallback);
+  HAL_PCD_RegisterCallback(&hpcd_USB_FS, HAL_PCD_SETUPSTAGE_CB_ID, PCD_SetupStageCallback);
+  HAL_PCD_RegisterCallback(&hpcd_USB_FS, HAL_PCD_RESET_CB_ID, PCD_ResetCallback);
+  HAL_PCD_RegisterCallback(&hpcd_USB_FS, HAL_PCD_SUSPEND_CB_ID, PCD_SuspendCallback);
+  HAL_PCD_RegisterCallback(&hpcd_USB_FS, HAL_PCD_RESUME_CB_ID, PCD_ResumeCallback);
+  HAL_PCD_RegisterCallback(&hpcd_USB_FS, HAL_PCD_CONNECT_CB_ID, PCD_ConnectCallback);
+  HAL_PCD_RegisterCallback(&hpcd_USB_FS, HAL_PCD_DISCONNECT_CB_ID, PCD_DisconnectCallback);
 
-  HAL_PCD_RegisterDataOutStageCallback(&hpcd_USB_OTG_FS, PCD_DataOutStageCallback);
-  HAL_PCD_RegisterDataInStageCallback(&hpcd_USB_OTG_FS, PCD_DataInStageCallback);
-  HAL_PCD_RegisterIsoOutIncpltCallback(&hpcd_USB_OTG_FS, PCD_ISOOUTIncompleteCallback);
-  HAL_PCD_RegisterIsoInIncpltCallback(&hpcd_USB_OTG_FS, PCD_ISOINIncompleteCallback);
+  HAL_PCD_RegisterDataOutStageCallback(&hpcd_USB_FS, PCD_DataOutStageCallback);
+  HAL_PCD_RegisterDataInStageCallback(&hpcd_USB_FS, PCD_DataInStageCallback);
 #endif /* USE_HAL_PCD_REGISTER_CALLBACKS */
+
   /* USER CODE BEGIN TxRx_Configuration */
-  HAL_PCDEx_SetRxFiFo(&hpcd_USB_OTG_FS, 0x80);
-  HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 0, 0x40);
-  HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 1, 0x80);
+  /* G474 USB FS 使用 PMA（Packet Memory Area），而非 OTG 的 FIFO */
+  /* PMA 布局: 端点表占 8 * 8 = 64 字节 (0x00~0x3F)，数据区从 0x40 开始 */
+  HAL_PCDEx_PMAConfig(&hpcd_USB_FS, 0x00, PCD_SNG_BUF, 0x40);  /* EP0 OUT */
+  HAL_PCDEx_PMAConfig(&hpcd_USB_FS, 0x80, PCD_SNG_BUF, 0x80);  /* EP0 IN  */
+  HAL_PCDEx_PMAConfig(&hpcd_USB_FS, BULK_OUT_EP, PCD_SNG_BUF, 0xC0);  /* EP1 OUT (Bulk) */
+  HAL_PCDEx_PMAConfig(&hpcd_USB_FS, BULK_IN_EP,  PCD_SNG_BUF, 0x100); /* EP1 IN  (Bulk) */
   /* USER CODE END TxRx_Configuration */
   }
   return USBD_OK;
@@ -615,21 +542,6 @@ uint32_t USBD_LL_GetRxDataSize(USBD_HandleTypeDef *pdev, uint8_t ep_addr)
   return HAL_PCD_EP_GetRxCount((PCD_HandleTypeDef*) pdev->pData, ep_addr);
 }
 
-#ifdef USBD_HS_TESTMODE_ENABLE
-/**
-  * @brief  Set High speed Test mode.
-  * @param  pdev: Device handle
-  * @param  testmode: test mode
-  * @retval USBD Status
-  */
-USBD_StatusTypeDef USBD_LL_SetTestMode(USBD_HandleTypeDef *pdev, uint8_t testmode)
-{
-  UNUSED(pdev);
-  UNUSED(testmode);
-
-  return USBD_OK;
-}
-#endif /* USBD_HS_TESTMODE_ENABLE */
 /**
   * @brief  Static single allocation.
   * @param  size: Size of allocated memory

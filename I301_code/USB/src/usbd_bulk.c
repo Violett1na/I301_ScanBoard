@@ -1,6 +1,5 @@
 #include "usbd_bulk.h"
 #include "usbd_ctlreq.h"
-#include "sgm5352_16.h"
 #include "ls_proto_receive.h"
 
 

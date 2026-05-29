@@ -22,6 +22,8 @@
 #include "stm32g4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "usb_device.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -62,6 +64,7 @@ extern DMA_HandleTypeDef hdma_adc4;
 extern DMA_HandleTypeDef hdma_adc5;
 extern TIM_HandleTypeDef htim2;
 /* USER CODE BEGIN EV */
+extern PCD_HandleTypeDef hpcd_USB_FS;
 
 /* USER CODE END EV */
 
@@ -288,5 +291,8 @@ void DMA2_Channel1_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-
+void USB_LP_IRQHandler(void)
+{
+    HAL_PCD_IRQHandler(&hpcd_USB_FS);
+}
 /* USER CODE END 1 */
