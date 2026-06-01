@@ -22,9 +22,9 @@ void AD_DA_Init(void)
 	HAL_OPAMP_Start(&hopamp4);
 	HAL_OPAMP_Start(&hopamp5);
 	/*设置DAC初始默认输出值*/
-    DAC_INX_SET(0);
+    DAC_INX_SET(2048);
     DAC_FBX_SET(0);	
-    DAC_INY_SET(0);
+    DAC_INY_SET(2048);
     DAC_FBY_SET(0);
 	/*启动ADC的DMA传输*/
 	HAL_ADC_Start_DMA(&hadc2, (uint32_t*)&adc_value.ix, 1);

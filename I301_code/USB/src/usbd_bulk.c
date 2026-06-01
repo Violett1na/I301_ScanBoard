@@ -307,8 +307,8 @@ void  USBD_BULK_Recv(void)
     if (bulk_rx_len == length)
     {
         //处理数据
-        LOG_SYS_INFO("usb bulk recv %d bytes", length);
-        LOG_SYS_HEX("usb bulk recv data", bulk_rx_buf, length);
+        // LOG_SYS_INFO("usb bulk recv %d bytes", length);
+        // LOG_SYS_HEX("usb bulk recv data", bulk_rx_buf, length);
         ls_parse(&ls_device_pkt, bulk_rx_buf, length);
         //移除数据
         bulk_rx_len = 0;        

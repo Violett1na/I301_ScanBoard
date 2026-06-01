@@ -34,7 +34,6 @@ static int app_ctrl_rdac(const ls_ctrl_rdac_t *rdac)
     {
         return -1;
     }
-    LOG_LSNET_INFO("ls - app rdac ctrl.");
     ad5290_axis_e axis;
     switch (rdac->xy)
     {

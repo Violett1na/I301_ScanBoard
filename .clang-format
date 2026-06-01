@@ -1,0 +1,64 @@
+# .clang-format - 嵌入式 C 项目配置
+Language: Cpp
+BasedOnStyle: LLVM
+
+# 基本格式
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 120
+
+# 大括号风格
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterControlStatement: false
+  AfterStruct: false
+  AfterEnum: false
+  BeforeElse: false
+  BeforeWhile: false
+
+# 对齐 - 连续赋值语句纵向对齐
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: false
+AlignConsecutiveMacros: true
+AlignTrailingComments: true
+AlignEscapedNewlines: Left
+AlignOperands: true
+
+# 指针和引用靠近变量名
+PointerAlignment: Right
+
+# 函数参数
+AllowAllParametersOfDeclarationOnNextLine: true
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: false
+
+# include 排序 - 关闭，避免打乱 HAL 库依赖顺序
+SortIncludes: false
+IncludeBlocks: Preserve
+
+# 空行控制
+MaxEmptyLinesToKeep: 2
+KeepEmptyLinesAtTheStartOfBlocks: false
+
+# switch-case
+IndentCaseLabels: true
+
+# 预处理指令
+IndentPPDirectives: None
+
+# 换行
+BinPackParameters: true
+BinPackArguments: true
+
+# 空格
+SpaceBeforeParens: ControlStatements
+SpaceAfterCStyleCast: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+
+# 注释 - 关闭重排，防止中文注释被错误处理
+ReflowComments: false

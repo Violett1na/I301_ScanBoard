@@ -110,7 +110,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   LOG_SYS_INFO("===================================================");
   ad5290_set_init();
-  // AD_DA_Init();
+  AD_DA_Init();
   MX_USB_DEVICE_Init();
   lsnet_init();
   /* USER CODE END 2 */
@@ -126,9 +126,9 @@ int main(void)
 		  //一次性清除所有通道的标志
 		  DMA1->IFCR = DMA_IFCR_CTCIF1 | DMA_IFCR_CTCIF2 | DMA_IFCR_CTCIF3 | DMA_IFCR_CTCIF4;
       // LOG_SYS_INFO("adc: vx = %04d, vy = %04d, ix = %04d, iy = %04d", 
-      //             adc_value.vx, adc_value.vy, adc_value.ix, adc_value.iy);
-      DAC_INX_SET(4095 - adc_value.vx);
-      DAC_INY_SET(4095 - adc_value.vy);
+      //             adc_value.vx, adc_value.vy, adc_value.ix, adc_value.iy );
+      DAC_INX_SET(4095 - (adc_value.vx / 1.3));
+      DAC_INY_SET(4095 - (adc_value.vy / 1.3));
     }
     // if (DMA2->ISR & DMA_ISR_TCIF1)
     // {
