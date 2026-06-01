@@ -31,6 +31,7 @@
 #include "usbd_def.h"
 
 /* USER CODE BEGIN INCLUDE */
+#include "usbd_bulk.h"
 
 /* USER CODE END INCLUDE */
 

@@ -26,7 +26,7 @@ typedef struct
 extern USBD_ClassTypeDef USBD_BULK;
 extern volatile uint8_t bulk_tx_busy;
 extern uint8_t bulk_rx_ready;
-extern uint16_t bulk_rx_len;
+extern volatile uint16_t bulk_rx_len;
 extern uint8_t  bulk_rx_buf[BULK_RX_BUF_SIZE];
 extern uint8_t  bulk_trans_buf[BULK_RX_BUF_SIZE]; // 实际usb使用发送缓冲区
 extern uint16_t bulk_trans_len;              // 发送数据长度

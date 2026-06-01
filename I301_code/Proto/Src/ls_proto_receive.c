@@ -41,6 +41,10 @@ int ls_handle(ls_packet_t *pkt)
             return handle_base_reset_device();
         case LS_BASE_REPLY:
             return handle_base_reply(pkt);
+        case LS_CTRL_REPLY:
+            return handle_ctrl_reply(pkt);
+        case LS_CTRL_RDAC:
+            return handle_ctrl_rdac(pkt);
         default:
             LS_LOG_INFO("ls - unknown typeCMD: 0x%04X", typeCMD);
             return -1;
@@ -125,4 +129,40 @@ int handle_base_reset_device(void)
         LS_LOG_INFO("ls - reset_device callback not registered, reset ignored.");
     }
     return -1;
+}
+
+/**
+ * @brief 设备收到数字电位器控制包(0x0302)：解析载荷并下发到应用层，
+ *        随后回送控制应答包(0x0301)，data 字段填入 0x0302。
+ * @return 0 成功，<0 失败
+ */
+int handle_ctrl_rdac(ls_packet_t *pkt)
+{
+    LS_LOG_INFO("ls - received ctrl rdac.");
+
+    /* 数据长度校验：协议规定 3 字节（xy / ch / code），全部为单字节 */
+    if (pkt->data_len != sizeof(ls_ctrl_rdac_t))
+    {
+        LS_LOG_INFO("ls - ctrl rdac data_len err: %u", pkt->data_len);
+        return -1;
+    }
+
+    ls_ctrl_rdac_t rdac;
+    memcpy(&rdac, pkt->data, sizeof(ls_ctrl_rdac_t));
+    /* 全部为单字节字段，无需做大小端转换 */
+
+    int ret = 0;
+    if (s_cbs && s_cbs->ctrl_rdac)
+    {
+        ret = s_cbs->ctrl_rdac(&rdac);
+    }
+    else
+    {
+        LS_LOG_INFO("ls - ctrl_rdac callback not registered, ignored.");
+        ret = -1;
+    }
+
+    /* 不论成功失败，按协议返回控制应答包，便于上位机做超时与重传管理 */
+    (void)ls_ctrl_reply(LS_CTRL_RDAC);
+    return ret;
 }

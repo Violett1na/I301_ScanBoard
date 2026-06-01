@@ -8,6 +8,7 @@
 #include "dac.h"
 #include "opamp.h"
 #include "ad5290.h"
+#include "ls_proto_device_app.h"
 
 #define DAC_INX_SET(val)    (hdac1.Instance->DHR12R1 = (val))
 #define DAC_FBX_SET(val)    (hdac1.Instance->DHR12R2 = (val))
@@ -36,5 +37,6 @@ extern volatile adc_value_t adc_value;
 
 void AD_DA_Init(void);
 void ad5290_set_init(void);
+void lsnet_init(void);
 
 #endif

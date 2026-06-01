@@ -18,7 +18,7 @@
 #define LS_DATA_BASE_LEN 23                    /* 协议包中除数据内容以外的基础长度 */
 #define LS_MAX_DATA_LEN  1024*5                /* 协议包中数据内容的最大长度 */
 
-#define LS_LOG_ENABLE 0                        /* 日志开关 */
+#define LS_LOG_ENABLE 1                        /* 日志开关 */
 #if LS_LOG_ENABLE
 
 #ifdef __cplusplus
@@ -43,8 +43,23 @@ typedef enum
     LS_BASE_RESET_DEVICE      = 0x0103,
 
     LS_CTRL_REPLY             = 0x0301,
+    LS_CTRL_RDAC              = 0x0302,    /* 控制数字电位器 */
 
-} ls_type_t;
+} ls_type_e;
+
+typedef enum
+{
+    LS_RADC_X = 0x01,
+    LS_RADC_Y = 0x02,
+} ls_radc_xy_e;
+
+typedef enum
+{
+    LS_RADC_CH_1 = 0x01,
+    LS_RADC_CH_2 = 0x02,
+    LS_RADC_CH_3 = 0x03,
+} ls_radc_ch_e;
+
 
 
 /* 协议包数据结构 */
@@ -71,6 +86,18 @@ typedef struct
 
 
 }  ls_base_reply_t;
+
+/* 控制类：数字电位器控制包结构（命令字 0x0302）
+ *   xy   : 0x01=X 轴，0x02=Y 轴
+ *   ch   : 0x01/0x02/0x03 选择该轴下 1/2/3 号通道
+ *   code : 0~255，AD5290 RDAC 码值
+ */
+typedef struct
+{
+    uint8_t xy;
+    uint8_t ch;
+    uint8_t code;
+} ls_ctrl_rdac_t;
 
 
 #pragma pack()

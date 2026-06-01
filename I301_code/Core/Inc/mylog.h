@@ -10,7 +10,7 @@
 
 #define LOG_ENABLE_SYS            1
 #define LOG_ENABLE_NET            0
-#define LOG_ENABLE_LSNET          0
+#define LOG_ENABLE_LSNET          1
 #define LOG_ENABLE_DMX            0
 #define LOG_ENABLE_MENU           0
 #define LOG_ENABLE_TEST           0

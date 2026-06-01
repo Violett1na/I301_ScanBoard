@@ -23,7 +23,6 @@
 #include "usb_device.h"
 #include "usbd_core.h"
 #include "usbd_desc.h"
-#include "usbd_bulk.h"
 
 /* USER CODE BEGIN Includes */
 

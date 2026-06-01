@@ -112,6 +112,7 @@ int main(void)
   ad5290_set_init();
   // AD_DA_Init();
   MX_USB_DEVICE_Init();
+  lsnet_init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -119,6 +120,7 @@ int main(void)
   LOG_SYS_INFO("Build Time: %s  %s", __DATE__, __TIME__);
   while (1)
   {
+    USBD_BULK_Recv();
     if (DMA1->ISR & (DMA_ISR_TCIF1 | DMA_ISR_TCIF2 | DMA_ISR_TCIF3 | DMA_ISR_TCIF4))
 	  {
 		  //一次性清除所有通道的标志

@@ -43,8 +43,12 @@ void AD_DA_Init(void)
 void ad5290_set_init(void)
 {
   	AD5290_Init();
-
 	
+}
+
+void lsnet_init(void)
+{
+	ls_app_init();
 }
 /*****************************************************/
 

@@ -71,11 +71,10 @@ volatile uint8_t bulk_tx_busy = 0;
 uint8_t  bulk_trans_buf[BULK_RX_BUF_SIZE]; // 实际usb使用发送缓冲区
 uint16_t bulk_trans_len = 0;              // 发送数据长度
 uint8_t  bulk_rx_buf[BULK_RX_BUF_SIZE];
-uint16_t bulk_rx_len = 0;
+volatile uint16_t bulk_rx_len = 0;
 uint8_t  bulk_rx_busy = 0;
 uint8_t  bulk_rx_ready = 0;
 
-uint8_t usb_connect = 0;
 
 USBD_ClassTypeDef USBD_BULK =
     {
@@ -229,13 +228,15 @@ static uint8_t USBD_BULK_DataOut(USBD_HandleTypeDef *pdev, uint8_t epnum)
 
     uint16_t len = USBD_LL_GetRxDataSize(pdev, epnum);
 
-    memcpy(&bulk_rx_buf[bulk_rx_len], hbulkc->RxBuffer, len);
-    bulk_rx_len += len;
-    // LOG_SYS_INFO("usb bulk origin recv %d bytes", len);
-    if (bulk_rx_len > BULK_RX_BUF_SIZE){
+    if (bulk_rx_len + len > BULK_RX_BUF_SIZE){
         bulk_rx_len = 0;
+        USBD_LL_PrepareReceive(pdev, BULK_OUT_EP, hbulkc->RxBuffer, BULK_FS_MAX_PACKET_SIZE);
         return USBD_FAIL;
     }
+    memcpy(&bulk_rx_buf[bulk_rx_len], hbulkc->RxBuffer, len);
+    bulk_rx_len += len;
+
+    // LOG_SYS_INFO("usb bulk origin recv %d bytes", len);
     USBD_LL_PrepareReceive(
         pdev,
         BULK_OUT_EP,
@@ -253,8 +254,9 @@ static void bulk_send_next_packet(void)
 
     if (remain == 0)
     {
-        if ((bulk_tx_len % BULK_MAX_PKT) == 0)
+        if ((bulk_tx_len != 0) && (bulk_tx_len % BULK_MAX_PKT) == 0 && bulk_tx_busy == 1)
         {
+            bulk_tx_busy = 2;  // 标记 ZLP 已发送，下次进入直接完成
             USBD_LL_Transmit(&hUsbDeviceFS, BULK_IN_EP, NULL, 0);
         }
         else
@@ -291,27 +293,23 @@ uint8_t USBD_BULK_SendLarge(uint8_t *buf, uint32_t len)
 
 void  USBD_BULK_Recv(void)
 {
-    if (bulk_rx_len < 13) {
+    if (bulk_rx_len < LS_DATA_BASE_LEN) {
         return;
     }
 
     if (memcmp(bulk_rx_buf, LS_HEADER_STR, LS_HEADER_LEN) != 0)
     {
-        // memmove(bulk_rx_buf, bulk_rx_buf + 1, bulk_rx_len - 1);
-        // bulk_rx_len--;
         LOG_SYS_ERROR("usb bulk recv head error.");
+        bulk_rx_len = 0;
         return;
     }
     uint16_t length = bulk_rx_buf[13] << 8 | bulk_rx_buf[14];
     if (bulk_rx_len == length)
     {
         //处理数据
-        // LOG_SYS_INFO("usb bulk recv %d bytes", length);
-        // LOG_SYS_HEX("usb bulk recv data", bulk_rx_buf, length);
-        if (ls_parse(&ls_device_pkt, bulk_rx_buf, length) == 0)
-        {
-            usb_connect = 1;
-        }
+        LOG_SYS_INFO("usb bulk recv %d bytes", length);
+        LOG_SYS_HEX("usb bulk recv data", bulk_rx_buf, length);
+        ls_parse(&ls_device_pkt, bulk_rx_buf, length);
         //移除数据
         bulk_rx_len = 0;        
     }
