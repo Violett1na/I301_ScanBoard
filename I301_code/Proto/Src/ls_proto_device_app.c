@@ -87,6 +87,39 @@ static int app_ctrl_rdac(const ls_ctrl_rdac_t *rdac)
     return 0;
 }
 
+/**
+ * @brief 设置补偿值回调：将协议下发的补偿值应用到对应通道
+ *        协议侧：xy 0x01/0x02 → X/Y；value 范围 [-2000, 2000]
+ * @return 0 成功，-1 参数非法
+ */
+static int app_ctrl_set_comp(const ls_ctrl_set_comp_t *comp)
+{
+    if (comp == NULL)
+    {
+        return -1;
+    }
+
+    if (comp->xy == LS_RADC_X)
+    {
+        /* TODO: 应用 X 通道补偿值 comp->value */
+        comp_value.x = comp->value;
+        LOG_LSNET_INFO("ls - set comp X: %d", comp->value);
+    }
+    else if (comp->xy == LS_RADC_Y)
+    {
+        /* TODO: 应用 Y 通道补偿值 comp->value */
+        comp_value.y = comp->value;
+        LOG_LSNET_INFO("ls - set comp Y: %d", comp->value);
+    }
+    else
+    {
+        LOG_LSNET_INFO("ls - set comp xy invalid: 0x%02X", comp->xy);
+        return -1;
+    }
+
+    return 0;
+}
+
 static void app_get_device_info(ls_base_reply_t *reply)
 {
     if (reply == NULL)
@@ -102,6 +135,8 @@ static void app_get_device_info(ls_base_reply_t *reply)
     reply->r_y1           = radc_value.y1;
     reply->r_y2           = radc_value.y2;
     reply->r_y3           = radc_value.y3;
+    reply->comp_x         = comp_value.x;
+    reply->comp_y         = comp_value.y;
 }
 
 /**
@@ -113,6 +148,7 @@ void ls_app_init(void)
     static const ls_receive_callbacks_t r_cbs = {
         .reset_device    = app_reset_device,
         .ctrl_rdac       = app_ctrl_rdac,
+        .ctrl_set_comp   = app_ctrl_set_comp,
     };
 
     static const ls_trans_callbacks_t t_cbs = {

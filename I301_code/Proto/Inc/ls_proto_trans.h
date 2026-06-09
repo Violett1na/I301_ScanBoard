@@ -37,6 +37,7 @@ int ls_base_reply(void);
 /* 控制类 */
 int ls_ctrl_reply(uint16_t typeCMD);
 int ls_ctrl_rdac(ls_radc_xy_e xy, ls_radc_ch_e ch, uint8_t code);
+int ls_ctrl_set_comp(ls_radc_xy_e xy, int16_t value);
 
 
 #ifdef __cplusplus

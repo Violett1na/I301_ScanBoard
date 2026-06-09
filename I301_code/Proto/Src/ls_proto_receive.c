@@ -45,6 +45,8 @@ int ls_handle(ls_packet_t *pkt)
             return handle_ctrl_reply(pkt);
         case LS_CTRL_RDAC:
             return handle_ctrl_rdac(pkt);
+        case LS_CTRL_SET_COMP:
+            return handle_ctrl_set_comp(pkt);
         default:
             LS_LOG_INFO("ls - unknown typeCMD: 0x%04X", typeCMD);
             return -1;
@@ -66,7 +68,8 @@ int handle_base_reply(ls_packet_t *pkt)
 #if LS_RX_ENDIAN_ENABLE     // 大小端互转一次
     reply.device_id      = ls_swap_endian_16(reply.device_id);
     reply.device_version = ls_swap_endian_16(reply.device_version);
-
+    reply.comp_x         = ls_swap_endian_16(reply.comp_x);
+    reply.comp_y         = ls_swap_endian_16(reply.comp_y);
 #endif
     /*  回调处理回复数据  */
     if (s_cbs && s_cbs->on_reply)
@@ -164,5 +167,44 @@ int handle_ctrl_rdac(ls_packet_t *pkt)
 
     /* 不论成功失败，按协议返回控制应答包，便于上位机做超时与重传管理 */
     (void)ls_ctrl_reply(LS_CTRL_RDAC);
+    return ret;
+}
+
+/**
+ * @brief 设备收到设置补偿值包(0x0303)：解析载荷并下发到应用层，
+ *        随后回送控制应答包(0x0301)，data 字段填入 0x0303。
+ * @return 0 成功，<0 失败
+ */
+int handle_ctrl_set_comp(ls_packet_t *pkt)
+{
+    LS_LOG_INFO("ls - received ctrl set comp.");
+
+    /* 数据长度校验：协议规定 3 字节（xy 1字节 + value 2字节） */
+    if (pkt->data_len != sizeof(ls_ctrl_set_comp_t))
+    {
+        LS_LOG_INFO("ls - ctrl set comp data_len err: %u", pkt->data_len);
+        return -1;
+    }
+
+    ls_ctrl_set_comp_t comp;
+    memcpy(&comp, pkt->data, sizeof(ls_ctrl_set_comp_t));
+
+#if LS_RX_ENDIAN_ENABLE
+    comp.value = (int16_t)ls_swap_endian_16((uint16_t)comp.value);
+#endif
+
+    int ret = 0;
+    if (s_cbs && s_cbs->ctrl_set_comp)
+    {
+        ret = s_cbs->ctrl_set_comp(&comp);
+    }
+    else
+    {
+        LS_LOG_INFO("ls - ctrl_set_comp callback not registered, ignored.");
+        ret = -1;
+    }
+
+    /* 按协议返回控制应答包 */
+    (void)ls_ctrl_reply(LS_CTRL_SET_COMP);
     return ret;
 }

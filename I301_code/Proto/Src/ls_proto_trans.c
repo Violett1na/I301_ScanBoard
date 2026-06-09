@@ -125,6 +125,38 @@ int ls_ctrl_rdac(ls_radc_xy_e xy, ls_radc_ch_e ch, uint8_t code)
     return s_pack_and_send();
 }
 
+/**
+ * @brief 发送设置补偿值包(0x0303)
+ * @param xy    0x01=X 通道，0x02=Y 通道
+ * @param value 补偿值，范围 [-2000, 2000]
+ * @return 0 成功，<0 失败
+ */
+int ls_ctrl_set_comp(ls_radc_xy_e xy, int16_t value)
+{
+    memset(&s_work_pkt, 0, sizeof(s_work_pkt));
+
+    ls_ctrl_set_comp_t comp;
+    comp.xy    = xy;
+    comp.value = value;
+
+    s_work_pkt.type     = LS_CTRL_SET_COMP >> 8;
+    s_work_pkt.cmd      = LS_CTRL_SET_COMP & 0xFF;
+    s_work_pkt.data_len = sizeof(ls_ctrl_set_comp_t);
+
+#if LS_ENDIAN_ENABLE
+    comp.value = ls_swap_endian_16((uint16_t)comp.value);
+#endif
+
+    memcpy(s_work_pkt.data, &comp, sizeof(ls_ctrl_set_comp_t));
+
+    s_work_pkt.pck_len = LS_DATA_BASE_LEN + s_work_pkt.data_len;
+    if (ls_pack(&s_work_pkt, s_work_buf, &s_work_len) < 0)
+    {
+        return -1;
+    }
+    return s_pack_and_send();
+}
+
 /**************************************************************/
 /*    从机处理发送函数    */
 /**************************************************************/
@@ -157,6 +189,8 @@ int ls_base_reply(void)
 #if LS_ENDIAN_ENABLE     // 小端转大端
     reply.device_id      = ls_swap_endian_16(reply.device_id);
     reply.device_version = ls_swap_endian_16(reply.device_version);
+    reply.comp_x         = ls_swap_endian_16(reply.comp_x);
+    reply.comp_y         = ls_swap_endian_16(reply.comp_y);
 #endif
 
     memcpy(s_work_pkt.data, &reply, sizeof(ls_base_reply_t));

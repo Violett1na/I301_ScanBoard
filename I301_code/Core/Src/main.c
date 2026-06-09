@@ -112,6 +112,7 @@ int main(void)
   AD_DA_Init();
   MX_USB_DEVICE_Init();
   lsnet_init();
+  param_init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -126,7 +127,7 @@ int main(void)
 		  // DMA1->IFCR = DMA_IFCR_CTCIF1 | DMA_IFCR_CTCIF2 | DMA_IFCR_CTCIF3 | DMA_IFCR_CTCIF4;
       // LOG_SYS_INFO("adc: vx = %04d, vy = %04d, ix = %04d, iy = %04d", 
       //             adc_value.vx, adc_value.vy, adc_value.ix, adc_value.iy );
-      int32_t vx = 4095 - (int32_t)adc_value.vx + dac_offset_x;
+      int32_t vx = 4095 - (int32_t)adc_value.vx + comp_value.x;
       if (vx < 0)    vx = 0;
       if (vx > 4095) vx = 4095;
       DAC_INX_SET(vx);

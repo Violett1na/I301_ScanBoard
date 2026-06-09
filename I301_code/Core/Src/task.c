@@ -3,10 +3,8 @@
 
 volatile adc_value_t adc_value;
 
-int16_t dac_offset_x = -80;
-int16_t dac_offset_y = 0;
-
 radc_value_t radc_value;
+comp_value_t comp_value;
 
 /*  初始化函数  */
 void AD_DA_Init(void)
@@ -49,15 +47,23 @@ void ad5290_set_init(void)
 {
   	AD5290_Init();
 	HAL_Delay(10);
-	radc_value.x1 = 10;
-	radc_value.x2 = 100;
-	radc_value.x3 = 100;
+	radc_value.x1 = 7;
+	radc_value.x2 = 113;
+	radc_value.x3 = 75;
 	radc_value.y1 = 100;
 	radc_value.y2 = 100;
 	radc_value.y3 = 100;
 
 	AD5290_SetAllCode((const uint8_t *)&radc_value);
 }
+
+
+void param_init(void)
+{
+	comp_value.x = -80;
+	comp_value.y = 0;
+}
+
 
 void lsnet_init(void)
 {

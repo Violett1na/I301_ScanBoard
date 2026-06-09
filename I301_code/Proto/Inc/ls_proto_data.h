@@ -44,6 +44,7 @@ typedef enum
 
     LS_CTRL_REPLY             = 0x0301,
     LS_CTRL_RDAC              = 0x0302,    /* 控制数字电位器 */
+    LS_CTRL_SET_COMP          = 0x0303,    /* 设置补偿值 */
 
 } ls_type_e;
 
@@ -92,6 +93,8 @@ typedef struct
     uint8_t  r_y2;
     uint8_t  r_y3;
 
+    int16_t comp_x;
+    int16_t comp_y;
 }  ls_base_reply_t;
 
 /* 控制类：数字电位器控制包结构（命令字 0x0302）
@@ -105,6 +108,16 @@ typedef struct
     uint8_t ch;
     uint8_t code;
 } ls_ctrl_rdac_t;
+
+/* 控制类：设置补偿值包结构（命令字 0x0303）
+ *   xy    : 0x01=X 通道，0x02=Y 通道
+ *   value : 补偿值，范围 [-2000, 2000]
+ */
+typedef struct
+{
+    uint8_t  xy;
+    int16_t  value;
+} ls_ctrl_set_comp_t;
 
 
 #pragma pack()

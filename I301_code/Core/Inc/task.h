@@ -43,18 +43,26 @@ typedef struct
     uint8_t y3;
 } radc_value_t;
 
+typedef struct
+{
+    int16_t x;
+    int16_t y;
+} comp_value_t;
+
+
+
 #pragma pack()
 
 
 
 extern volatile adc_value_t adc_value;
 
-extern int16_t dac_offset_x;
-extern int16_t dac_offset_y;
 extern radc_value_t radc_value;
+extern comp_value_t comp_value;
 
 void AD_DA_Init(void);
 void ad5290_set_init(void);
+void param_init(void);
 void lsnet_init(void);
 
 uint16_t adc_filter(uint16_t value);
