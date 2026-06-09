@@ -1,6 +1,7 @@
 #include "ls_proto_device_app.h"
 #include "usbd_bulk.h"
 #include "ad5290.h"
+#include "task.h"
 
 
 /* -----------------------------------------------------------------------
@@ -34,30 +35,55 @@ static int app_ctrl_rdac(const ls_ctrl_rdac_t *rdac)
     {
         return -1;
     }
-    ad5290_axis_e axis;
-    switch (rdac->xy)
+    if (rdac->xy == LS_RADC_X)
     {
-        case LS_RADC_X: axis = AD5290_AXIS_X; break;
-        case LS_RADC_Y: axis = AD5290_AXIS_Y; break;
-        default:
-            LOG_LSNET_INFO("ls - rdac xy invalid: 0x%02X", rdac->xy);
-            return -1;
+        switch (rdac->ch)   
+        {
+            case LS_RADC_CH_1: 
+                radc_value.x1 = rdac->code; 
+                AD5290_SetCode(AD5290_AXIS_X, AD5290_CH_1, rdac->code);
+                break;
+            case LS_RADC_CH_2: 
+                radc_value.x2 = rdac->code; 
+                AD5290_SetCode(AD5290_AXIS_X, AD5290_CH_2, rdac->code);
+                break;
+            case LS_RADC_CH_3: 
+                radc_value.x3 = rdac->code; 
+                AD5290_SetCode(AD5290_AXIS_X, AD5290_CH_3, rdac->code);
+                break;
+            default:
+                return -1;
+        }
+    }
+    else if (rdac->xy == LS_RADC_Y)
+    {
+        switch (rdac->ch)   
+        {
+            case LS_RADC_CH_1: 
+                radc_value.y1 = rdac->code; 
+                AD5290_SetCode(AD5290_AXIS_Y, AD5290_CH_1, rdac->code);
+                break;
+            case LS_RADC_CH_2: 
+                radc_value.y2 = rdac->code; 
+                AD5290_SetCode(AD5290_AXIS_Y, AD5290_CH_2, rdac->code);
+                break;
+            case LS_RADC_CH_3: 
+                radc_value.y3 = rdac->code; 
+                AD5290_SetCode(AD5290_AXIS_Y, AD5290_CH_3, rdac->code);
+                break;
+            default:
+                return -1;
+        }
+    }
+    else
+    {
+        LOG_LSNET_INFO("ls - rdac xy invalid: 0x%02X", rdac->xy);
+        return -1;
     }
 
-    ad5290_ch_e ch;
-    switch (rdac->ch)   
-    {
-        case LS_RADC_CH_1: ch = AD5290_CH_1; break;
-        case LS_RADC_CH_2: ch = AD5290_CH_2; break;
-        case LS_RADC_CH_3: ch = AD5290_CH_3; break;
-        default:
-            LOG_LSNET_INFO("ls - rdac ch invalid: 0x%02X", rdac->ch);
-            return -1;
-    }
-
-    AD5290_SetCode(axis, ch, rdac->code);
-    LOG_LSNET_INFO("ls - rdac set xy=0x%02X ch=0x%02X code=%u",
-                   rdac->xy, rdac->ch, rdac->code);
+    LOG_LSNET_INFO("ls - rdac %03d  %03d  %03d  %03d  %03d  %03d",
+                   radc_value.x1, radc_value.x2, radc_value.x3,
+                   radc_value.y1, radc_value.y2, radc_value.y3);
     return 0;
 }
 
@@ -69,6 +95,13 @@ static void app_get_device_info(ls_base_reply_t *reply)
     }
     reply->device_id      = 0x1234;
     reply->device_version = 0x5678;
+
+    reply->r_x1           = radc_value.x1;
+    reply->r_x2           = radc_value.x2;
+    reply->r_x3           = radc_value.x3;
+    reply->r_y1           = radc_value.y1;
+    reply->r_y2           = radc_value.y2;
+    reply->r_y3           = radc_value.y3;
 }
 
 /**

@@ -51,7 +51,6 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -119,22 +118,22 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   LOG_SYS_INFO("Build Time: %s  %s", __DATE__, __TIME__);
   while (1)
-  {
+  { 
     USBD_BULK_Recv();
     if (DMA1->ISR & (DMA_ISR_TCIF1 | DMA_ISR_TCIF2 | DMA_ISR_TCIF3 | DMA_ISR_TCIF4))
 	  {
-		  //一次性清除所有通道的标志
-		  DMA1->IFCR = DMA_IFCR_CTCIF1 | DMA_IFCR_CTCIF2 | DMA_IFCR_CTCIF3 | DMA_IFCR_CTCIF4;
+		  // 一次性清除所有通道的标志
+		  // DMA1->IFCR = DMA_IFCR_CTCIF1 | DMA_IFCR_CTCIF2 | DMA_IFCR_CTCIF3 | DMA_IFCR_CTCIF4;
       // LOG_SYS_INFO("adc: vx = %04d, vy = %04d, ix = %04d, iy = %04d", 
       //             adc_value.vx, adc_value.vy, adc_value.ix, adc_value.iy );
-      DAC_INX_SET(4095 - (adc_value.vx / 1.3));
-      DAC_INY_SET(4095 - (adc_value.vy / 1.3));
+      int32_t vx = 4095 - (int32_t)adc_value.vx + dac_offset_x;
+      if (vx < 0)    vx = 0;
+      if (vx > 4095) vx = 4095;
+      DAC_INX_SET(vx);
+
     }
-    // if (DMA2->ISR & DMA_ISR_TCIF1)
-    // {
-    //   DMA2->IFCR = DMA_IFCR_CTCIF1;
-    //   LOG_SYS_INFO("adc: fbx = %04d, fby = %04d", adc_value.fb.x, adc_value.fb.y);
-    // }
+
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

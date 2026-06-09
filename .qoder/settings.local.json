@@ -38,10 +38,8 @@
       "Bash(md5sum:*)",
       "Bash(sha256sum:*)",
       "Read",
-      "Edit",
       "Glob",
       "Grep",
-      "Write"
     ]
   }
 }

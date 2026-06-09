@@ -199,11 +199,11 @@ void AD5290_Init(void)
     GPIOC->BSRR = ((uint32_t)ALL_SCL_PINS) << 16U;
 
     /* 6 路写入中点 */
-    uint8_t codes[AD5290_TOTAL_NUM];
-    for (uint32_t i = 0; i < AD5290_TOTAL_NUM; ++i) {
-        codes[i] = AD5290_CODE_MID;
-    }
-    ad5290_write_all(codes);
+    // uint8_t codes[AD5290_TOTAL_NUM];
+    // for (uint32_t i = 0; i < AD5290_TOTAL_NUM; ++i) {
+    //     codes[i] = AD5290_CODE_MID;
+    // }
+    // ad5290_write_all(codes);
 }
 
 void AD5290_SetCode(ad5290_axis_e axis, ad5290_ch_e ch, uint8_t code)

@@ -84,6 +84,13 @@ typedef struct
     uint16_t device_id;
     uint16_t device_version;
 
+    uint8_t  r_x1;
+    uint8_t  r_x2;
+    uint8_t  r_x3;
+
+    uint8_t  r_y1;
+    uint8_t  r_y2;
+    uint8_t  r_y3;
 
 }  ls_base_reply_t;
 
