@@ -79,6 +79,13 @@ void param_init(void)
 					radc_value.x1, radc_value.x2, radc_value.x3, radc_value.y1, radc_value.y2, radc_value.y3);
 	LOG_SYS_INFO("comp: x = %04d, y = %04d", comp_value.x, comp_value.y);
 	LOG_SYS_INFO("===================================================");
+
+
+	for (uint8_t i = 0; i < 6; i++)
+	{
+		LED_USB_TOGGLE();
+		HAL_Delay(150);
+	}
 }
 
 

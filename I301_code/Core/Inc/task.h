@@ -8,6 +8,7 @@
 #include "dac.h"
 #include "opamp.h"
 #include "ad5290.h"
+#include "gpio.h"
 #include "ls_proto_device_app.h"
 
 #define DAC_INX_SET(val)    (hdac1.Instance->DHR12R1 = (val))
