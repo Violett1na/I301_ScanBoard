@@ -1,10 +1,12 @@
 #include "task.h"
+#include "bsp_flash.h"
 
-
+flash_store_t flash_store;
 volatile adc_value_t adc_value;
 
 radc_value_t radc_value;
 comp_value_t comp_value;
+
 
 /*  初始化函数  */
 void AD_DA_Init(void)
@@ -47,21 +49,36 @@ void ad5290_set_init(void)
 {
   	AD5290_Init();
 	HAL_Delay(10);
-	radc_value.x1 = 7;
-	radc_value.x2 = 113;
-	radc_value.x3 = 75;
-	radc_value.y1 = 100;
-	radc_value.y2 = 100;
-	radc_value.y3 = 100;
-
-	AD5290_SetAllCode((const uint8_t *)&radc_value);
 }
 
 
 void param_init(void)
 {
-	comp_value.x = -80;
-	comp_value.y = 0;
+	if (bsp_flash_load(&flash_store) == 0)
+	{
+		radc_value  = flash_store.radc;
+		comp_value  = flash_store.comp;
+		LOG_SYS_INFO("load param from flash");
+	}
+	else
+	{
+		radc_value.x1 = 40;
+		radc_value.x2 = 80;
+		radc_value.x3 = 45;
+		radc_value.y1 = 40;
+		radc_value.y2 = 80;
+		radc_value.y3 = 45;
+
+		comp_value.x  = -80;
+		comp_value.y  = -80;
+		LOG_SYS_INFO("load param from default");
+	}
+
+	AD5290_SetAllCode((const uint8_t *)&radc_value);
+	LOG_SYS_INFO("param: x1 = %04d, x2 = %04d, x3 = %04d, y1 = %04d, y2 = %04d, y3 = %04d", 
+					radc_value.x1, radc_value.x2, radc_value.x3, radc_value.y1, radc_value.y2, radc_value.y3);
+	LOG_SYS_INFO("comp: x = %04d, y = %04d", comp_value.x, comp_value.y);
+	LOG_SYS_INFO("===================================================");
 }
 
 

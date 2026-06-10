@@ -47,6 +47,8 @@ int ls_handle(ls_packet_t *pkt)
             return handle_ctrl_rdac(pkt);
         case LS_CTRL_SET_COMP:
             return handle_ctrl_set_comp(pkt);
+        case LS_CTRL_SAVE_PARAM:
+            return handle_ctrl_save_param(pkt);
         default:
             LS_LOG_INFO("ls - unknown typeCMD: 0x%04X", typeCMD);
             return -1;
@@ -206,5 +208,31 @@ int handle_ctrl_set_comp(ls_packet_t *pkt)
 
     /* 按协议返回控制应答包 */
     (void)ls_ctrl_reply(LS_CTRL_SET_COMP);
+    return ret;
+}
+
+/**
+ * @brief 设备收到参数保存包(0x0304)：调用回调执行保存，
+ *        随后回送控制应答包(0x0301)，data 字段填入 0x0304。
+ * @return 0 成功，<0 失败
+ */
+int handle_ctrl_save_param(ls_packet_t *pkt)
+{
+    LS_LOG_INFO("ls - received ctrl save param.");
+    (void)pkt;
+
+    int ret = 0;
+    if (s_cbs && s_cbs->ctrl_save_param)
+    {
+        ret = s_cbs->ctrl_save_param();
+    }
+    else
+    {
+        LS_LOG_INFO("ls - ctrl_save_param callback not registered, ignored.");
+        ret = -1;
+    }
+
+    /* 按协议返回控制应答包 */
+    (void)ls_ctrl_reply(LS_CTRL_SAVE_PARAM);
     return ret;
 }

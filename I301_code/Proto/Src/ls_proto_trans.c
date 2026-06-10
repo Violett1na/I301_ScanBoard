@@ -157,6 +157,29 @@ int ls_ctrl_set_comp(ls_radc_xy_e xy, int16_t value)
     return s_pack_and_send();
 }
 
+/**
+ * @brief 发送参数保存包(0x0304)
+ * @return 0 成功，<0 失败
+ */
+int ls_ctrl_save_param(void)
+{
+    memset(&s_work_pkt, 0, sizeof(s_work_pkt));
+
+    uint8_t save_flag = 0xFF;
+
+    s_work_pkt.type     = LS_CTRL_SAVE_PARAM >> 8;
+    s_work_pkt.cmd      = LS_CTRL_SAVE_PARAM & 0xFF;
+    s_work_pkt.data_len = sizeof(uint8_t);
+    memcpy(s_work_pkt.data, &save_flag, sizeof(uint8_t));
+
+    s_work_pkt.pck_len = LS_DATA_BASE_LEN + s_work_pkt.data_len;
+    if (ls_pack(&s_work_pkt, s_work_buf, &s_work_len) < 0)
+    {
+        return -1;
+    }
+    return s_pack_and_send();
+}
+
 /**************************************************************/
 /*    从机处理发送函数    */
 /**************************************************************/

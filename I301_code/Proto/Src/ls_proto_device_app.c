@@ -1,6 +1,7 @@
 #include "ls_proto_device_app.h"
 #include "usbd_bulk.h"
 #include "ad5290.h"
+#include "bsp_flash.h"
 #include "task.h"
 
 
@@ -120,6 +121,18 @@ static int app_ctrl_set_comp(const ls_ctrl_set_comp_t *comp)
     return 0;
 }
 
+/**
+ * @brief 参数保存回调：将当前参数写入持久化存储
+ * @return 0 成功，-1 失败
+ */
+static int app_ctrl_save_param(void)
+{
+    LOG_LSNET_INFO("ls - save param.");
+    flash_store.radc = radc_value;
+    flash_store.comp = comp_value;
+    return bsp_flash_save(&flash_store);
+}
+
 static void app_get_device_info(ls_base_reply_t *reply)
 {
     if (reply == NULL)
@@ -149,6 +162,7 @@ void ls_app_init(void)
         .reset_device    = app_reset_device,
         .ctrl_rdac       = app_ctrl_rdac,
         .ctrl_set_comp   = app_ctrl_set_comp,
+        .ctrl_save_param = app_ctrl_save_param,
     };
 
     static const ls_trans_callbacks_t t_cbs = {

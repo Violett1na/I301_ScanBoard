@@ -45,6 +45,7 @@ typedef enum
     LS_CTRL_REPLY             = 0x0301,
     LS_CTRL_RDAC              = 0x0302,    /* 控制数字电位器 */
     LS_CTRL_SET_COMP          = 0x0303,    /* 设置补偿值 */
+    LS_CTRL_SAVE_PARAM        = 0x0304,    /* 参数保存 */
 
 } ls_type_e;
 

@@ -49,6 +49,14 @@ typedef struct
     int16_t y;
 } comp_value_t;
 
+/* Flash 持久化存储总结构体，所有需要保存到 Flash 的参数统一放入此处 */
+typedef struct
+{
+    radc_value_t  radc;           /* 电位器码值 */
+    comp_value_t  comp;           /* 补偿值 */
+    
+} flash_store_t;
+
 
 
 #pragma pack()
@@ -59,6 +67,7 @@ extern volatile adc_value_t adc_value;
 
 extern radc_value_t radc_value;
 extern comp_value_t comp_value;
+extern flash_store_t flash_store;
 
 void AD_DA_Init(void);
 void ad5290_set_init(void);
