@@ -18,7 +18,7 @@
 #define LS_DATA_BASE_LEN 23                    /* 协议包中除数据内容以外的基础长度 */
 #define LS_MAX_DATA_LEN  1024*5                /* 协议包中数据内容的最大长度 */
 
-#define LS_LOG_ENABLE 1                        /* 日志开关 */
+#define LS_LOG_ENABLE 0                        /* 日志开关 */
 #if LS_LOG_ENABLE
 
 #ifdef __cplusplus

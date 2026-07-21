@@ -20,11 +20,12 @@ uint32_t log_get_tick(void)
 
 /* =================== 日志输出实现 =================== */
 
+#if LOG_ENABLE
+
 void log_output(log_level_e level,
                 const char *module,
                 const char *fmt, ...)
 {
-#if LOG_ENABLE
     if (level > LOG_LEVEL) return;
 
     va_list args;
@@ -48,8 +49,9 @@ void log_output(log_level_e level,
     va_end(args);
 
     printf("\r\n");
-#endif
 }
+
+#endif /* LOG_ENABLE */
 
 
 /*
@@ -60,6 +62,8 @@ void log_output(log_level_e level,
     * buf: 数据缓冲区
     * len: 数据长度
 */
+#if LOG_ENABLE
+
 void log_output_hex(log_level_e level,
                     const char *module,
                     const char *title,
@@ -109,3 +113,5 @@ void log_output_hex(log_level_e level,
         log_output(level, module, "%s", line);
     }
 }
+
+#endif /* LOG_ENABLE */

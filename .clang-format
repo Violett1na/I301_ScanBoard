@@ -1,64 +1,245 @@
-# .clang-format - 嵌入式 C 项目配置
+# ============================================================================
+# .clang-format - 嵌入式 C 项目格式化配置
+# ============================================================================
+# 使用方法:
+#   格式化单个文件:  clang-format -i path/to/file.c
+#   预览不修改:      clang-format path/to/file.c
+#   批量格式化:      clang-format -i Core/Src/*.c Core/Inc/*.h
+#
+# 开关说明:
+#   - 想关闭某个功能: 将对应值改为 false 或 None
+#   - 想开启某个功能: 将对应值改为 true 或具体选项值
+#   - 注释掉某行(加#): 该项会回退到 BasedOnStyle 的默认值
+# ============================================================================
+
+# 基础风格，所有未明确指定的选项都继承 LLVM 默认值
+# 可选值: LLVM, Google, Chromium, Mozilla, WebKit, Microsoft, GNU
 Language: Cpp
 BasedOnStyle: LLVM
 
-# 基本格式
+# ============================================================================
+# 【缩进与行宽】
+# ============================================================================
+
+# 每级缩进的空格数
+# 改为 2: 更紧凑; 改为 8: 类似 Linux 内核风格
 IndentWidth: 4
+
+# Tab 字符对应的宽度（仅在 UseTab 开启时有意义）
 TabWidth: 4
+
+# 是否使用 Tab 缩进
+# Never: 全部用空格（推荐，避免不同编辑器显示不一致）
+# Always: 全部用 Tab
+# ForIndentation: 仅缩进用 Tab，对齐用空格
 UseTab: Never
+
+# 单行最大列宽，超过会自动换行
+# 设为 0: 不限制行宽（不推荐）
+# 常见值: 80, 100, 120
 ColumnLimit: 120
 
-# 大括号风格
+# ============================================================================
+# 【大括号风格】— 控制 { } 的换行位置
+# ============================================================================
+
+# 大括号断行的总开关
+# 设为 Allman: 所有大括号都换行
+# 设为 Attach: 所有大括号都不换行（跟在语句后）
+# 设为 Custom: 使用下面 BraceWrapping 逐项控制（当前选择）
 BreakBeforeBraces: Custom
+
 BraceWrapping:
+  # 函数定义的 { 是否换行
+  # true:  void foo()        |  false: void foo() {
+  #        {                  |
   AfterFunction: true
+
+  # if/for/while 后的 { 是否换行
+  # true:  if (x)            |  false: if (x) {
+  #        {                  |
   AfterControlStatement: false
+
+  # struct 定义后的 { 是否换行
+  # true:  struct foo        |  false: struct foo {
+  #        {                  |
   AfterStruct: false
+
+  # enum 定义后的 { 是否换行
   AfterEnum: false
+
+  # else 前的 } 是否换行
+  # true:  }                 |  false: } else {
+  #        else {             |
   BeforeElse: false
+
+  # do-while 的 while 前是否换行
+  # true:  }                 |  false: } while (cond);
+  #        while (cond);     |
   BeforeWhile: false
 
-# 对齐 - 连续赋值语句纵向对齐
+# ============================================================================
+# 【对齐】— 控制代码纵向对齐行为
+# ============================================================================
+
+# 连续赋值语句的 = 号纵向对齐
+# true:  int a   = 1;       |  false: int a = 1;
+#        int bbb = 2;       |         int bbb = 2;
 AlignConsecutiveAssignments: true
+
+# 连续声明的变量名纵向对齐
+# true:  int    a;           |  false: int a;
+#        double bbb;         |         double bbb;
 AlignConsecutiveDeclarations: false
+
+# 连续宏定义的值纵向对齐
+# true:  #define A   1       |  false: #define A 1
+#        #define BBB 200     |         #define BBB 200
 AlignConsecutiveMacros: true
+
+# 行尾注释纵向对齐
+# true:  int a = 1;   // 注释A    |  false: int a = 1; // 注释A
+#        int b = 200; // 注释B    |         int b = 200; // 注释B
 AlignTrailingComments: true
+
+# 续行反斜杠 \ 的对齐方式
+# Left: 靠左对齐   Right: 靠右对齐（列宽处）
 AlignEscapedNewlines: Left
+
+# 多行表达式中操作符对齐
+# true:  int a = bbbbb      |  false: int a = bbbbb
+#              + ccccc;      |         + ccccc;
 AlignOperands: true
 
-# 指针和引用靠近变量名
+# ============================================================================
+# 【指针风格】
+# ============================================================================
+
+# 指针 * 和引用 & 的位置
+# Right: int *p（靠近变量名，C 风格常用）
+# Left:  int* p（靠近类型名，C++ 风格常用）
+# Middle: int * p
 PointerAlignment: Right
 
-# 函数参数
+# ============================================================================
+# 【短语句折叠】— 控制是否允许短代码写在一行
+# ============================================================================
+
+# 函数声明的所有参数是否允许放到下一行
+# true: 如果参数放不下，允许全部移到下一行
 AllowAllParametersOfDeclarationOnNextLine: true
+
+# 短函数是否允许写在一行
+# Empty: 只有空函数体可以单行（如 void foo() {}）
+# None:  全部展开
+# All:   所有短函数都可以单行
 AllowShortFunctionsOnASingleLine: Empty
+
+# 短 if 是否允许写在一行
+# true:  if (x) return;     |  false: if (x)
+#                            |             return;
+# 关闭后强制 if 体换行，代码更清晰
 AllowShortIfStatementsOnASingleLine: false
+
+# 短循环是否允许写在一行
+# true:  while (x) y++;     |  false: while (x)
+#                            |             y++;
 AllowShortLoopsOnASingleLine: false
+
+# 短代码块是否允许写在一行（如 if (x) { return; }）
 AllowShortBlocksOnASingleLine: false
 
-# include 排序 - 关闭，避免打乱 HAL 库依赖顺序
+# ============================================================================
+# 【#include 排序】
+# ============================================================================
+
+# 是否自动排序 #include
+# true:  按字母顺序排列（可能打乱 HAL 库的依赖顺序！）
+# false: 保持原有顺序（嵌入式项目推荐关闭）
 SortIncludes: false
+
+# include 块的处理方式
+# Preserve: 保持原有的空行分隔（推荐）
+# Merge:    合并所有 include 为一个块
+# Regroup:  按规则重新分组
 IncludeBlocks: Preserve
 
-# 空行控制
+# ============================================================================
+# 【空行控制】
+# ============================================================================
+
+# 最多保留几个连续空行
+# 设为 1: 最多1个空行; 设为 0: 不允许空行
 MaxEmptyLinesToKeep: 2
+
+# 代码块开头是否保留空行
+# true:  void foo() {       |  false: void foo() {
+#                            |             code;
+#            code;           |         }
+#        }                   |
 KeepEmptyLinesAtTheStartOfBlocks: false
 
-# switch-case
+# ============================================================================
+# 【switch-case 缩进】
+# ============================================================================
+
+# case 标签是否相对 switch 缩进
+# true:  switch (x) {       |  false: switch (x) {
+#            case 1:         |         case 1:
+#                break;      |             break;
+#        }                   |         }
 IndentCaseLabels: true
 
-# 预处理指令
+# ============================================================================
+# 【预处理指令缩进】
+# ============================================================================
+
+# #if / #ifdef / #endif 等预处理指令的缩进
+# None:        不缩进（全部顶格，传统 C 风格）
+# AfterHash:   # 后缩进（如 #  ifdef）
+# BeforeHash:  # 前缩进（如   #ifdef）
 IndentPPDirectives: None
 
-# 换行
+# ============================================================================
+# 【函数参数换行】
+# ============================================================================
+
+# 函数参数是否紧凑排列
+# true:  尽量多个参数放一行（紧凑）
+# false: 要么全放一行，要么每个参数单独一行（整齐但占行数）
 BinPackParameters: true
+
+# 函数调用的实参是否紧凑排列（同上，针对调用而非声明）
 BinPackArguments: true
 
-# 空格
+# ============================================================================
+# 【空格控制】
+# ============================================================================
+
+# 括号前是否加空格
+# ControlStatements: 仅 if/for/while/switch 前加空格
+#   效果: if (x)  但  foo(x)
+# Always: 所有括号前都加空格  foo (x)
+# Never:  全部不加空格  if(x)
 SpaceBeforeParens: ControlStatements
+
+# C 风格强制转换后是否加空格
+# true:  (int) x            |  false: (int)x
 SpaceAfterCStyleCast: false
+
+# 括号内部是否加空格
+# true:  if( x == 1 )       |  false: if(x == 1)
 SpacesInParentheses: false
+
+# 方括号内部是否加空格
+# true:  arr[ i ]            |  false: arr[i]
 SpacesInSquareBrackets: false
 
-# 注释 - 关闭重排，防止中文注释被错误处理
+# ============================================================================
+# 【注释处理】
+# ============================================================================
+
+# 是否自动重排注释内容（使注释也符合列宽限制）
+# true:  长注释会被自动换行重排
+# false: 保持注释原样（推荐！防止中文注释被错误断行）
 ReflowComments: false

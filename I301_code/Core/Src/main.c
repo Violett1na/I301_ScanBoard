@@ -109,7 +109,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   LOG_SYS_INFO("===================================================");
   ad5290_set_init();
-  AD_DA_Init();
+  // AD_DA_Init();
   MX_USB_DEVICE_Init();
   lsnet_init();
   param_init();
@@ -121,28 +121,23 @@ int main(void)
   while (1)
   { 
     USBD_BULK_Recv();
-    if (DMA1->ISR & (DMA_ISR_TCIF1 | DMA_ISR_TCIF2 | DMA_ISR_TCIF3 | DMA_ISR_TCIF4))
-	  {
-		  // 一次性清除所有通道的标志
-		  DMA1->IFCR = DMA_IFCR_CTCIF1 | DMA_IFCR_CTCIF2 | DMA_IFCR_CTCIF3 | DMA_IFCR_CTCIF4;
-      // LOG_SYS_INFO("adc: vx = %04d, vy = %04d, ix = %04d, iy = %04d", 
-      //             adc_value.vx, adc_value.vy, adc_value.ix, adc_value.iy );
-      int32_t vx = 4095 - (int32_t)adc_value.vx + comp_value.x;
-      int32_t vy = 4095 - (int32_t)adc_value.vy + comp_value.y;
-
-      if (vx < 0)    vx = 0;
-      if (vx > 4095) vx = 4095;
-      if (vy < 0)    vy = 0;
-      if (vy > 4095) vy = 4095;
-      
-      DAC_INX_SET(vx);
-      DAC_INY_SET(vy);
-
-    }
-
-
+    // if (DMA1->ISR & (DMA_ISR_TCIF1 | DMA_ISR_TCIF2 | DMA_ISR_TCIF3 | DMA_ISR_TCIF4))
+	  // {
+		//   // 一次性清除所有通道的标志
+		//   DMA1->IFCR = DMA_IFCR_CTCIF1 | DMA_IFCR_CTCIF2 | DMA_IFCR_CTCIF3 | DMA_IFCR_CTCIF4;
+    //   // LOG_SYS_INFO("adc: vx = %04d, vy = %04d, ix = %04d, iy = %04d", 
+    //   //             adc_value.vx, adc_value.vy, adc_value.ix, adc_value.iy );
+    //   int32_t vx = 4095 - (int32_t)adc_value.vx + comp_value.x;
+    //   int32_t vy = 4095 - (int32_t)adc_value.vy + comp_value.y;
+    //   if (vx < 0)    vx = 0;
+    //   if (vx > 4095) vx = 4095;
+    //   if (vy < 0)    vy = 0;
+    //   if (vy > 4095) vy = 4095;
+    //   DAC_INX_SET(vx);
+    //   DAC_INY_SET(vy);
+    // }
     /* USER CODE END WHILE */
-
+    
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
