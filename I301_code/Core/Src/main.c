@@ -109,10 +109,12 @@ int main(void)
   /* USER CODE BEGIN 2 */
   LOG_SYS_INFO("===================================================");
   ad5290_set_init();
-  // AD_DA_Init();
   MX_USB_DEVICE_Init();
   lsnet_init();
   param_init();
+  /* 启动 AD-DA 处理通路: 须在 param_init 之后, 使 comp 偏置首拍生效。
+     硬件约束: JP3 必须断开(或外部 IN± 不接), 见 spec §3.2 */
+  AD_DA_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
