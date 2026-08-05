@@ -65,6 +65,10 @@ extern DMA_HandleTypeDef hdma_adc5;
 extern TIM_HandleTypeDef htim2;
 /* USER CODE BEGIN EV */
 extern PCD_HandleTypeDef hpcd_USB_FS;
+extern DMA_HandleTypeDef hdma_dac1_ch1;
+extern DMA_HandleTypeDef hdma_dac1_ch2;
+extern DMA_HandleTypeDef hdma_dac4_ch1;
+extern DMA_HandleTypeDef hdma_dac4_ch2;
 
 /* USER CODE END EV */
 
@@ -294,5 +298,26 @@ void DMA2_Channel1_IRQHandler(void)
 void USB_LP_IRQHandler(void)
 {
     HAL_PCD_IRQHandler(&hpcd_USB_FS);
+}
+
+/* TX DMA 中断: 循环模式 HT/TC 已在 AD_DA_Init 中屏蔽, 此处仅兜底传输错误(TE) */
+void DMA1_Channel5_IRQHandler(void)
+{
+    HAL_DMA_IRQHandler(&hdma_dac1_ch1);
+}
+
+void DMA1_Channel6_IRQHandler(void)
+{
+    HAL_DMA_IRQHandler(&hdma_dac1_ch2);
+}
+
+void DMA1_Channel7_IRQHandler(void)
+{
+    HAL_DMA_IRQHandler(&hdma_dac4_ch1);
+}
+
+void DMA1_Channel8_IRQHandler(void)
+{
+    HAL_DMA_IRQHandler(&hdma_dac4_ch2);
 }
 /* USER CODE END 1 */
