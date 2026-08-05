@@ -77,4 +77,25 @@ void lsnet_init(void);
 
 uint16_t adc_filter(uint16_t value);
 
+/* --------------------------------------------------------------
+ * AD-DA 处理通路（1MHz 逐样本线性处理、预留算法槽）
+ * spec: docs/superpowers/specs/2026-08-04-ad-da-processing-path-design.md
+ * -------------------------------------------------------------- */
+#define AD_DA_BLOCK   64U                       /* RX/TX 乒乓缓冲每通道样本数 */
+#define AD_DA_HALF    (AD_DA_BLOCK / 2U)        /* 半块长度 = 块处理单位 */
+#define AD_DA_CH_NUM  4U                        /* 通道数: 0=vx 1=ix 2=vy 3=iy */
+
+/* 算法槽签名：一次处理 AD_DA_CH_NUM 个通道各 n 个样本
+ * in: 各通道 RX 半块指针数组；out: 各通道 TX 半块指针数组 */
+typedef void (*ad_da_process_fn_t)(const uint16_t *in[AD_DA_CH_NUM],
+                                   uint16_t       *out[AD_DA_CH_NUM],
+                                   uint16_t        n);
+
+extern ad_da_process_fn_t ad_da_process_fn;     /* 算法槽，默认指向 ad_da_process_linear */
+
+/* 默认线性算法：y = (4095 - x) + off，饱和钳位 0..4095 */
+void ad_da_process_linear(const uint16_t *in[AD_DA_CH_NUM],
+                          uint16_t       *out[AD_DA_CH_NUM],
+                          uint16_t        n);
+
 #endif
