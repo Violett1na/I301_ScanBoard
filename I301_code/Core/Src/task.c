@@ -91,40 +91,125 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
     }
 }
 
+/* ------------------------------------------------------------------
+ * AD-DA 处理通路初始化（时序见 spec §6：TX 先于 RX 启动、时钟最后释放）
+ * ------------------------------------------------------------------ */
+
+/* TX DMA 句柄(.ioc 无 DAC DMA, 手工创建), stm32g4xx_it.c 中 extern 引用 */
+DMA_HandleTypeDef hdma_dac1_ch1;
+DMA_HandleTypeDef hdma_dac1_ch2;
+DMA_HandleTypeDef hdma_dac4_ch1;
+DMA_HandleTypeDef hdma_dac4_ch2;
+
+/* 创建 1 路 TX DMA: 内存→外设、循环、半字, DMAMUX 请求挂 DAC 通道 */
+static void tx_dma_create(DMA_HandleTypeDef *hdma, DMA_Channel_TypeDef *ch, uint32_t request)
+{
+    hdma->Instance                 = ch;
+    hdma->Init.Request             = request;
+    hdma->Init.Direction           = DMA_MEMORY_TO_PERIPH;
+    hdma->Init.PeriphInc           = DMA_PINC_DISABLE;
+    hdma->Init.MemInc              = DMA_MINC_ENABLE;
+    hdma->Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
+    hdma->Init.MemDataAlignment    = DMA_MDATAALIGN_HALFWORD;
+    hdma->Init.Mode                = DMA_CIRCULAR;
+    hdma->Init.Priority            = DMA_PRIORITY_HIGH;
+    if (HAL_DMA_Init(hdma) != HAL_OK)
+    {
+        Error_Handler();
+    }
+}
+
 /*  初始化函数  */
 void AD_DA_Init(void)
 {
-	/*执行ADC偏移校准*/
-	ADC_Offset_Calibration(&hadc1);
+    DAC_ChannelConfTypeDef sConfig = {0};
 
-	ADC_Offset_Calibration(&hadc2);
-	ADC_Offset_Calibration(&hadc3);
-	ADC_Offset_Calibration(&hadc4);
-	ADC_Offset_Calibration(&hadc5);
-	HAL_Delay(10);
-	/*启动DAC及对应的跟随器*/
-	HAL_DAC_Start(&hdac1, DAC_CHANNEL_1);
-	HAL_DAC_Start(&hdac1, DAC_CHANNEL_2);
-	HAL_DAC_Start(&hdac4, DAC_CHANNEL_1);	
-	HAL_DAC_Start(&hdac4, DAC_CHANNEL_2);	
-	HAL_OPAMP_Start(&hopamp4);
-	HAL_OPAMP_Start(&hopamp5);
-	/*设置DAC初始默认输出值*/
-    DAC_INX_SET(2048);
-    DAC_FBX_SET(0);	
-    DAC_INY_SET(2048);
-    DAC_FBY_SET(0);
-	/*启动ADC的DMA传输*/
-	HAL_ADC_Start_DMA(&hadc2, (uint32_t*)&adc_value.ix, 1);
-	HAL_ADC_Start_DMA(&hadc3, (uint32_t*)&adc_value.vx, 1);
-	HAL_ADC_Start_DMA(&hadc4, (uint32_t*)&adc_value.vy, 1);
-	HAL_ADC_Start_DMA(&hadc5, (uint32_t*)&adc_value.iy, 1);
+    /* 1. 4 路 RX ADC 偏移校准(沿用原流程) */
+    ADC_Offset_Calibration(&hadc2);
+    ADC_Offset_Calibration(&hadc3);
+    ADC_Offset_Calibration(&hadc4);
+    ADC_Offset_Calibration(&hadc5);
+    HAL_Delay(10);
 
-	// HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adc_value.fb, 2);
-	HAL_Delay(10);
-	/*启动触发ADC的定时器*/
-	HAL_TIM_Base_Start(&htim3);
-	// HAL_TIM_Base_Start_IT(&htim2);
+    /* 2. 运行时重配 DAC 触发 = TIM3 TRGO(缓冲保持 OFF, 不动 .ioc/生成代码) */
+    sConfig.DAC_HighFrequency           = DAC_HIGH_FREQUENCY_INTERFACE_MODE_ABOVE_160MHZ;
+    sConfig.DAC_DMADoubleDataMode       = DISABLE;
+    sConfig.DAC_SignedFormat            = DISABLE;
+    sConfig.DAC_SampleAndHold           = DAC_SAMPLEANDHOLD_DISABLE;
+    sConfig.DAC_Trigger                 = DAC_TRIGGER_T3_TRGO;
+    sConfig.DAC_Trigger2                = DAC_TRIGGER_NONE;
+    sConfig.DAC_OutputBuffer            = DAC_OUTPUTBUFFER_DISABLE;
+    sConfig.DAC_ConnectOnChipPeripheral = DAC_CHIPCONNECT_EXTERNAL;   /* DAC1: 直接出脚 */
+    sConfig.DAC_UserTrimming            = DAC_TRIMMING_FACTORY;
+    if (HAL_DAC_ConfigChannel(&hdac1, &sConfig, DAC_CHANNEL_1) != HAL_OK) Error_Handler();
+    if (HAL_DAC_ConfigChannel(&hdac1, &sConfig, DAC_CHANNEL_2) != HAL_OK) Error_Handler();
+    sConfig.DAC_ConnectOnChipPeripheral = DAC_CHIPCONNECT_INTERNAL;   /* DAC4: 片内进 OPAMP4/5 */
+    if (HAL_DAC_ConfigChannel(&hdac4, &sConfig, DAC_CHANNEL_1) != HAL_OK) Error_Handler();
+    if (HAL_DAC_ConfigChannel(&hdac4, &sConfig, DAC_CHANNEL_2) != HAL_OK) Error_Handler();
+
+    /* 3. 先使能输出端 */
+    if (HAL_DAC_Start(&hdac1, DAC_CHANNEL_1)   != HAL_OK) Error_Handler();
+    if (HAL_DAC_Start(&hdac1, DAC_CHANNEL_2)   != HAL_OK) Error_Handler();
+    if (HAL_DAC_Start(&hdac4, DAC_CHANNEL_1)   != HAL_OK) Error_Handler();
+    if (HAL_DAC_Start(&hdac4, DAC_CHANNEL_2)   != HAL_OK) Error_Handler();
+    if (HAL_OPAMP_Start(&hopamp4)              != HAL_OK) Error_Handler();
+    if (HAL_OPAMP_Start(&hopamp5)              != HAL_OK) Error_Handler();
+
+    /* 4. 初值 2048(中点) + tx_buf 整体预填(防前半块垃圾值) */
+    if (HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, 2048) != HAL_OK) Error_Handler();
+    if (HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, 2048) != HAL_OK) Error_Handler();
+    if (HAL_DAC_SetValue(&hdac4, DAC_CHANNEL_1, DAC_ALIGN_12B_R, 2048) != HAL_OK) Error_Handler();
+    if (HAL_DAC_SetValue(&hdac4, DAC_CHANNEL_2, DAC_ALIGN_12B_R, 2048) != HAL_OK) Error_Handler();
+    for (uint8_t ch = 0; ch < AD_DA_CH_NUM; ch++)
+    {
+        for (uint16_t i = 0; i < AD_DA_BLOCK; i++)
+        {
+            tx_buf[ch][i] = 2048;
+        }
+    }
+
+    /* 5. 手工创建 4 路 TX DMA(DMA1_Ch5–Ch8), 链接到 DAC 句柄 */
+    tx_dma_create(&hdma_dac1_ch1, DMA1_Channel5, DMA_REQUEST_DAC1_CHANNEL1);
+    tx_dma_create(&hdma_dac1_ch2, DMA1_Channel6, DMA_REQUEST_DAC1_CHANNEL2);
+    tx_dma_create(&hdma_dac4_ch1, DMA1_Channel7, DMA_REQUEST_DAC4_CHANNEL1);
+    tx_dma_create(&hdma_dac4_ch2, DMA1_Channel8, DMA_REQUEST_DAC4_CHANNEL2);
+    __HAL_LINKDMA(&hdac1, DMA_Handle1, hdma_dac1_ch1);
+    __HAL_LINKDMA(&hdac1, DMA_Handle2, hdma_dac1_ch2);
+    __HAL_LINKDMA(&hdac4, DMA_Handle1, hdma_dac4_ch1);
+    __HAL_LINKDMA(&hdac4, DMA_Handle2, hdma_dac4_ch2);
+
+    /* TX NVIC: 优先级 1(低于 RX 节拍中断 0, 避免抢占块处理), 仅处理传输错误 */
+    HAL_NVIC_SetPriority(DMA1_Channel5_IRQn, 1, 0);
+    HAL_NVIC_SetPriority(DMA1_Channel6_IRQn, 1, 0);
+    HAL_NVIC_SetPriority(DMA1_Channel7_IRQn, 1, 0);
+    HAL_NVIC_SetPriority(DMA1_Channel8_IRQn, 1, 0);
+    HAL_NVIC_EnableIRQ(DMA1_Channel5_IRQn);
+    HAL_NVIC_EnableIRQ(DMA1_Channel6_IRQn);
+    HAL_NVIC_EnableIRQ(DMA1_Channel7_IRQn);
+    HAL_NVIC_EnableIRQ(DMA1_Channel8_IRQn);
+
+    /* 启动 4 路 TX DMA(循环、长度 AD_DA_BLOCK), 启动后即消费预填的 2048 */
+    if (HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t *)tx_buf[0], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK) Error_Handler();
+    if (HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_2, (uint32_t *)tx_buf[1], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK) Error_Handler();
+    if (HAL_DAC_Start_DMA(&hdac4, DAC_CHANNEL_1, (uint32_t *)tx_buf[2], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK) Error_Handler();
+    if (HAL_DAC_Start_DMA(&hdac4, DAC_CHANNEL_2, (uint32_t *)tx_buf[3], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK) Error_Handler();
+
+    /* 循环 DMA 每 64µs 置位 HT/TC, 本设计 TX 侧无需块中断:
+       屏蔽 HT/TC、仅保留 TE(传输错误), 避免 ~12.5万次/秒 空中断(见 Global Constraints) */
+    __HAL_DMA_DISABLE_IT(&hdma_dac1_ch1, DMA_IT_HT | DMA_IT_TC);
+    __HAL_DMA_DISABLE_IT(&hdma_dac1_ch2, DMA_IT_HT | DMA_IT_TC);
+    __HAL_DMA_DISABLE_IT(&hdma_dac4_ch1, DMA_IT_HT | DMA_IT_TC);
+    __HAL_DMA_DISABLE_IT(&hdma_dac4_ch2, DMA_IT_HT | DMA_IT_TC);
+
+    /* 6. RX DMA 改指 rx_buf 并启动; 使能 hadc3 DMA 中断(块处理节拍, 优先级已在 dma.c 设 0) */
+    HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+    if (HAL_ADC_Start_DMA(&hadc3, (uint32_t *)rx_buf[0], AD_DA_BLOCK) != HAL_OK) Error_Handler();
+    if (HAL_ADC_Start_DMA(&hadc2, (uint32_t *)rx_buf[1], AD_DA_BLOCK) != HAL_OK) Error_Handler();
+    if (HAL_ADC_Start_DMA(&hadc4, (uint32_t *)rx_buf[2], AD_DA_BLOCK) != HAL_OK) Error_Handler();
+    if (HAL_ADC_Start_DMA(&hadc5, (uint32_t *)rx_buf[3], AD_DA_BLOCK) != HAL_OK) Error_Handler();
+
+    /* 7. 唯一时钟源最后释放: 收发同拍锁相 */
+    if (HAL_TIM_Base_Start(&htim3) != HAL_OK) Error_Handler();
 }
 
 
