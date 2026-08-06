@@ -36,8 +36,12 @@
   ADC 通道：hadc3=PB13(vx)、hadc4=PB15(vy)、hadc2=PA0(ix)、hadc5=PA9(iy)。
 - 注入点：DA_INX=PA4（DAC1_CH1）、DA_INY=PB12（DAC4_CH1→OPAMP4 跟随）；
   DA_FBX=PA5（DAC1_CH2）、DA_FBY=PA8（DAC4_CH2→OPAMP5 跟随）。
-- **硬件事实**：DA_FBX/DA_FBY 经 74HC4053 的 X1/Y1、公共端去向 JB3/JB4 连接器脚，
-  **不进入内部模拟环路**——此两路为导出/监测/外部环回用途（用户知情，维持 4 路全驱）。
+- **硬件事实**：JB3/JB4 的 FBX/FBY 脚由 74HC4053（U10）选路：X0/Y0 = driver 位置
+  反馈 FB，X1/Y1 = DA_FBX/DA_FBY（MCU 重建），公共端经 R6/R8 出板；选择脚
+  A/B = CH-FBY(PB4)/CH-FBX(PB3)，**默认低电平 = 选 X0/Y0（driver FB 直通，
+  与原仓库行为一致），拉高才切 DAC 重建**（外部环回预留）。此两路 DAC 输出
+  **不进入内部模拟环路**，仅为导出/监测/外部环回用途（用户知情，维持 4 路全驱）。
+  ⚠️ PB3/PB4 未登记于 .ioc，固件必须在 `MX_GPIO_Init` 显式驱动（见 §9.8）。
 - DAC 注入点 = U1C 命令求和虚地（外部指令 R62 12K、DAC R16 12K、位置反馈 R24 100K 汇入），
   即处理后波形进入模拟伺服环的命令端。
 
@@ -151,6 +155,17 @@ param_init → AD_DA_Init），使 off 首拍生效。
    IN 通道（ch0/ch2）公式不变（§1 符号分析仅对注入通路成立）。DAC 初值与 tx_buf
    预填同步改为 FB 通道 0、IN 通道 2048。若与原模拟板 JB3/JB4 波形对比发现 FB
    极性需反相，仅需调整 `ad_da_process_linear()` FB 分支符号。
+8. **4053 选择脚漏配（X 轴反馈波形异常的直接根因）**（2026-08-06 上板实锤）：
+   症状：100Hz/4Vpp 方波激励下 JB3 上 X 轴反馈为 ≈200µs 窄脉冲（Y 轴貌似正常），
+   且静息电平曾随 DA_FBX 公式变化——说明测到的是 X1 通路（DA_FBX 重建）而非
+   X0（driver FB）。根因：74HC4053 选择脚 A/B = CH-FBY(PB4)/CH-FBX(PB3)
+   **未登记于 .ioc**，本通路实施时 `MX_GPIO_Init` 未配置 PB3/PB4，选择脚悬空，
+   反馈出口选通状态不定。原仓库工作版本以未提交改动手工驱动 PB3/PB4 = LOW
+   （选 X0/Y0，driver FB 直通 JB3/JB4），故同板原固件表现正常。修正：`main.h`
+   增补 CH_FBX/CH_FBY 宏，`gpio.c` 将 PB3/PB4 配为推挽输出默认低电平（与原仓库
+   一致；高电平 = DAC 重建切出，预留外部环回，暂不启用）。排查期间曾试行
+   ADC12 时钟源 SYSCLK→PLL-P（170MHz 超 fADC 60MHz 上限，DS12994），实测与
+   本症状无因果，已回退；该时钟超规格仍为独立遗留项，与本通路无关，另行评估。
 
 ## 10. 验证
 
