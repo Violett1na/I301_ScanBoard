@@ -24,42 +24,6 @@ comp_value_t comp_value;
 static uint16_t rx_buf[AD_DA_CH_NUM][AD_DA_BLOCK];   /* RX: ADC 循环 DMA 写入 */
 static uint16_t tx_buf[AD_DA_CH_NUM][AD_DA_BLOCK];   /* TX: DMA 循环读出至 DAC DHR */
 
-/* DAC 欠载累计计数: TIM6_DAC/TIM7_DAC 兜底 handler 中累加(见 stm32g4xx_it.c)。
-   正常运行应恒为 0; 调试器可直接观察, 非 0 即 TX DMA 供给跟不上 TRGO 节拍 */
-volatile uint32_t ad_da_underrun_cnt;          /* 欠载总次数 */
-volatile uint32_t ad_da_underrun_dac1;         /* DAC1(CH1|CH2) 欠载次数 */
-volatile uint32_t ad_da_underrun_dac4;         /* DAC4(CH1|CH2) 欠载次数 */
-
-/* TX DMA 实际搬运计数(诊断用): TC 中断每 64 次搬运进一次, 理论速率各 15625/s。
-   若增速远低于理论值, 说明 TX DMA 没有真正搬运。诊断结束后可连同 TC 解蔽一起还原 */
-volatile uint32_t ad_da_tx_tc_cnt[AD_DA_CH_NUM];
-
-/* TX DMA 传输错误(TE)计数: TEIF 置位即累加, 正常应恒为 0。
-   非 0 即发生过 DMA 总线传输错误——这就是"疑似总线错误"的确证信号 */
-volatile uint32_t ad_da_tx_te_cnt[AD_DA_CH_NUM];
-
-/* 首次 TE 现场快照(ch=0xFF 表示未锁存), 由 ad_da_te_latch 在 TEIF 分支抢录 */
-volatile ad_da_te_snapshot_t ad_da_te_snapshot = { .ch = 0xFFU };
-
-/* TE 现场锁存: 必须在 HAL_DMA_IRQHandler 之前调用——HAL 会清 TEIF 并关闭通道,
-   事后就看不到出错瞬间的寄存器了。仅首次 TE 锁存快照, 之后只累加计数。
-   优先级 1(与 TC 同一 handler), 不存在并发锁存竞争 */
-void ad_da_te_latch(uint8_t ch, DMA_Channel_TypeDef *dma_ch)
-{
-    ad_da_tx_te_cnt[ch]++;
-
-    if (ad_da_te_snapshot.ch == 0xFFU)          /* 仅首次锁存 */
-    {
-        ad_da_te_snapshot.tick  = HAL_GetTick();
-        ad_da_te_snapshot.isr   = DMA1->ISR;
-        ad_da_te_snapshot.ccr   = dma_ch->CCR;
-        ad_da_te_snapshot.cndtr = dma_ch->CNDTR;
-        ad_da_te_snapshot.cpar  = dma_ch->CPAR;
-        ad_da_te_snapshot.cmar  = dma_ch->CMAR;
-        ad_da_te_snapshot.ch    = ch;           /* 最后写 ch, 作为"锁存完成"标志 */
-    }
-}
-
 /* 默认线性算法(IN/FB 通道分制, 饱和钳位 0..4095):
  *   IN 通道 ch0/ch2(vx→DA_INX, vy→DA_INY): y = (4095 - x) + off
  *     —— 符号分析见 spec §1: 抵消 ADC-V 调理反相, 进 U1C 求和点端到端符号为正;
@@ -148,57 +112,6 @@ static void ad_da_process_half(uint16_t offset)
     ad_da_process_fn(in, out, AD_DA_HALF);
 }
 
-/* TX DMA 句柄定义在本文件后面的初始化节, 此处前向声明供诊断打印引用 */
-extern DMA_HandleTypeDef hdma_dac1_ch1;
-extern DMA_HandleTypeDef hdma_dac1_ch2;
-extern DMA_HandleTypeDef hdma_dac4_ch1;
-extern DMA_HandleTypeDef hdma_dac4_ch2;
-
-/* 调试辅助输出: 主循环约每秒调用一次, 打印 rx/tx 最新值与欠载计数。
- * 与 ISR 写同一缓冲, 采样可能撕裂, 仅作"数据是否在流、数值是否合理"的定性观察。
- * 验证完成后删除。 */
-void ad_da_debug_print(void)
-{
-    LOG_SYS_INFO("rx[vx,ix,vy,iy]=%04u,%04u,%04u,%04u",
-                 (unsigned)rx_buf[0][AD_DA_BLOCK - 1U], (unsigned)rx_buf[1][AD_DA_BLOCK - 1U],
-                 (unsigned)rx_buf[2][AD_DA_BLOCK - 1U], (unsigned)rx_buf[3][AD_DA_BLOCK - 1U]);
-    LOG_SYS_INFO("tx[inx,fbx,iny,fby]=%04u,%04u,%04u,%04u",
-                 (unsigned)tx_buf[0][0], (unsigned)tx_buf[1][0],
-                 (unsigned)tx_buf[2][0], (unsigned)tx_buf[3][0]);
-    LOG_SYS_INFO("tc=%u,%u,%u,%u te=%u,%u,%u,%u undr=%u(d1=%u,d4=%u)",
-                 (unsigned)ad_da_tx_tc_cnt[0], (unsigned)ad_da_tx_tc_cnt[1],
-                 (unsigned)ad_da_tx_tc_cnt[2], (unsigned)ad_da_tx_tc_cnt[3],
-                 (unsigned)ad_da_tx_te_cnt[0], (unsigned)ad_da_tx_te_cnt[1],
-                 (unsigned)ad_da_tx_te_cnt[2], (unsigned)ad_da_tx_te_cnt[3],
-                 (unsigned)ad_da_underrun_cnt, (unsigned)ad_da_underrun_dac1,
-                 (unsigned)ad_da_underrun_dac4);
-    LOG_SYS_INFO("dor=%u,%u,%u,%u isr=%08X err=%u,%u,%u,%u dac=%u,%u",
-                 (unsigned)DAC1->DOR1, (unsigned)DAC1->DOR2,
-                 (unsigned)DAC4->DOR1, (unsigned)DAC4->DOR2,
-                 (unsigned)DMA1->ISR,
-                 (unsigned)hdma_dac1_ch1.ErrorCode, (unsigned)hdma_dac1_ch2.ErrorCode,
-                 (unsigned)hdma_dac4_ch1.ErrorCode, (unsigned)hdma_dac4_ch2.ErrorCode,
-                 (unsigned)hdac1.ErrorCode, (unsigned)hdac4.ErrorCode);
-    /* 首次 TE 现场快照: 一旦 te 计数非 0, 此处给出出错瞬间的通道寄存器 */
-    if (ad_da_te_snapshot.ch != 0xFFU)
-    {
-        LOG_SYS_INFO("TE@ch%u t=%ums isr=%08X CCR=%08X CNDTR=%u CPAR=%08X CMAR=%08X tx=%08X",
-                     (unsigned)ad_da_te_snapshot.ch, (unsigned)ad_da_te_snapshot.tick,
-                     (unsigned)ad_da_te_snapshot.isr, (unsigned)ad_da_te_snapshot.ccr,
-                     (unsigned)ad_da_te_snapshot.cndtr, (unsigned)ad_da_te_snapshot.cpar,
-                     (unsigned)ad_da_te_snapshot.cmar, (unsigned)(uint32_t)tx_buf);
-    }
-    /* 诊断: TX DMA/DMAMUX/DAC 寄存器直接打印, 免调试器 */
-    LOG_SYS_INFO("dma5: CCR=%08X CNDTR=%02u CPAR=%08X CMAR=%08X (tx_buf=%08X) st=%u lk=%u",
-                 (unsigned)DMA1_Channel5->CCR, (unsigned)DMA1_Channel5->CNDTR,
-                 (unsigned)DMA1_Channel5->CPAR, (unsigned)DMA1_Channel5->CMAR,
-                 (unsigned)(uint32_t)tx_buf,
-                 (unsigned)hdma_dac1_ch1.State, (unsigned)hdma_dac1_ch1.Lock);
-    LOG_SYS_INFO("mux: tx4=%08X rx0=%08X  DAC1_CR=%08X (DHR12R1=%08X)",
-                 (unsigned)DMAMUX1_Channel4->CCR, (unsigned)DMAMUX1_Channel0->CCR,
-                 (unsigned)DAC1->CR, (unsigned)(uint32_t)&DAC1->DHR12R1);
-}
-
 /* 块处理节拍: 仅以 hadc3(DMA1_Ch1)的 HT/TC 为全局调度点。
  * ISR 内容为纯数据搬运 + 整数 ALU(实时数据通路, AGENTS.md 中断规范
  * 的已确认例外条款), 严禁在此调用协议/flash/日志。 */
@@ -259,7 +172,6 @@ static void tx_dma_create(DMA_HandleTypeDef *hdma, DMA_Channel_TypeDef *ch, uint
 /*  初始化函数  */
 void AD_DA_Init(void)
 {
-    LOG_SYS_INFO("AD-DA init: start");
     DAC_ChannelConfTypeDef sConfig = {0};
 
     /* 1. 4 路 RX ADC 偏移校准(沿用原流程) */
@@ -268,7 +180,6 @@ void AD_DA_Init(void)
     ADC_Offset_Calibration(&hadc4);
     ADC_Offset_Calibration(&hadc5);
     HAL_Delay(10);
-    LOG_SYS_INFO("AD-DA init: start ADC offset calibration done");
 
     /* 2. 运行时重配 DAC 触发 = TIM3 TRGO(缓冲保持 OFF, 不动 .ioc/生成代码) */
     sConfig.DAC_HighFrequency           = DAC_HIGH_FREQUENCY_INTERFACE_MODE_ABOVE_160MHZ;
@@ -285,7 +196,6 @@ void AD_DA_Init(void)
     sConfig.DAC_ConnectOnChipPeripheral = DAC_CHIPCONNECT_INTERNAL;   /* DAC4: 片内进 OPAMP4/5 */
     if (HAL_DAC_ConfigChannel(&hdac4, &sConfig, DAC_CHANNEL_1) != HAL_OK) Error_Handler();
     if (HAL_DAC_ConfigChannel(&hdac4, &sConfig, DAC_CHANNEL_2) != HAL_OK) Error_Handler();
-    LOG_SYS_INFO("AD-DA init: start DAC configuration done");
 
     /* 3. 先使能输出端 */
     if (HAL_DAC_Start(&hdac1, DAC_CHANNEL_1)   != HAL_OK) Error_Handler();
@@ -310,7 +220,6 @@ void AD_DA_Init(void)
             tx_buf[ch][i] = idle_val;
         }
     }
-    LOG_SYS_INFO("AD-DA init: start TX buffer initialization done");
 
     /* 5. 手工创建 4 路 TX DMA(DMA1_Ch5–Ch8), 链接到 DAC 句柄 */
     tx_dma_create(&hdma_dac1_ch1, DMA1_Channel5, DMA_REQUEST_DAC1_CHANNEL1);
@@ -332,13 +241,11 @@ void AD_DA_Init(void)
     HAL_NVIC_EnableIRQ(DMA1_Channel7_IRQn);
     HAL_NVIC_EnableIRQ(DMA1_Channel8_IRQn);
 
-    /* 启动 4 路 TX DMA(循环、长度 AD_DA_BLOCK), 启动后即消费预填的 2048 */
-    LOG_SYS_INFO("AD-DA init: start TX DMA");
+    /* 启动 4 路 TX DMA(循环、长度 AD_DA_BLOCK), 启动后即消费预填值 */
     if (HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t *)tx_buf[0], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK) Error_Handler();
     if (HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_2, (uint32_t *)tx_buf[1], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK) Error_Handler();
     if (HAL_DAC_Start_DMA(&hdac4, DAC_CHANNEL_1, (uint32_t *)tx_buf[2], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK) Error_Handler();
     if (HAL_DAC_Start_DMA(&hdac4, DAC_CHANNEL_2, (uint32_t *)tx_buf[3], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK) Error_Handler();
-    LOG_SYS_INFO("AD-DA init: done TX DMA");
 
     /* DAC 欠载兜底中断: HAL_DAC_Start_DMA 已使能 DMAUDRIE, 此处释放 NVIC。
        TIM6_DAC 线挂 DAC1&DAC3、TIM7_DAC 线挂 DAC2&DAC4; 优先级 2
@@ -351,33 +258,20 @@ void AD_DA_Init(void)
 
     /* 循环 DMA 每 64µs 置位 HT/TC, 本设计 TX 侧无需块中断:
        屏蔽 HT/TC、仅保留 TE(传输错误), 避免 ~12.5万次/秒 空中断(见 Global Constraints) */
-       LOG_SYS_INFO("AD-DA init: disable TX DMA HT/TC interrupt");
-    /* 【诊断阶段】HT 屏蔽、TC 暂保留: 用 TC 中断计数实际搬运速率(ad_da_tx_tc_cnt,
-       理论各 15625/s)。诊断结束后恢复 DMA_IT_HT|DMA_IT_TC 全屏蔽 */
-    __HAL_DMA_DISABLE_IT(&hdma_dac1_ch1, DMA_IT_HT);
-    __HAL_DMA_DISABLE_IT(&hdma_dac1_ch2, DMA_IT_HT);
-    __HAL_DMA_DISABLE_IT(&hdma_dac4_ch1, DMA_IT_HT);
-    __HAL_DMA_DISABLE_IT(&hdma_dac4_ch2, DMA_IT_HT);
+    __HAL_DMA_DISABLE_IT(&hdma_dac1_ch1, DMA_IT_HT | DMA_IT_TC);
+    __HAL_DMA_DISABLE_IT(&hdma_dac1_ch2, DMA_IT_HT | DMA_IT_TC);
+    __HAL_DMA_DISABLE_IT(&hdma_dac4_ch1, DMA_IT_HT | DMA_IT_TC);
+    __HAL_DMA_DISABLE_IT(&hdma_dac4_ch2, DMA_IT_HT | DMA_IT_TC);
 
     /* 6. RX DMA 改指 rx_buf 并启动; 使能 hadc3 DMA 中断(块处理节拍, 优先级已在 dma.c 设 0) */
     HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
-    LOG_SYS_INFO("AD-DA init: start ADC DMA");
     if (HAL_ADC_Start_DMA(&hadc3, (uint32_t *)rx_buf[0], AD_DA_BLOCK) != HAL_OK) Error_Handler();
     if (HAL_ADC_Start_DMA(&hadc2, (uint32_t *)rx_buf[1], AD_DA_BLOCK) != HAL_OK) Error_Handler();
     if (HAL_ADC_Start_DMA(&hadc4, (uint32_t *)rx_buf[2], AD_DA_BLOCK) != HAL_OK) Error_Handler();
     if (HAL_ADC_Start_DMA(&hadc5, (uint32_t *)rx_buf[3], AD_DA_BLOCK) != HAL_OK) Error_Handler();
-    LOG_SYS_INFO("AD-DA init: done ADC DMA");
 
     /* 7. 唯一时钟源最后释放: 收发同拍锁相 */
     if (HAL_TIM_Base_Start(&htim3) != HAL_OK) Error_Handler();
-    LOG_SYS_INFO("AD-DA init: start TIM3 done");
-
-    /* 诊断: 初始化收尾时 TX DMA 状态快照——若此处 EN=1 而后续周期打印变 0,
-       说明主循环阶段有东西关了它; State: 1=READY(被Abort过) 2=BUSY(已启动) */
-    LOG_SYS_INFO("post-init: CCR5=%08X st=%u lk=%u err=%u dmaISR=%08X",
-                 (unsigned)DMA1_Channel5->CCR, (unsigned)hdma_dac1_ch1.State,
-                 (unsigned)hdma_dac1_ch1.Lock, (unsigned)hdma_dac1_ch1.ErrorCode,
-                 (unsigned)DMA1->ISR);
 }
 
 

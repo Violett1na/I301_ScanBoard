@@ -61,6 +61,11 @@ void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, LED_USB_Pin|LED_X_Pin|LED_Y_Pin, GPIO_PIN_SET);
 
+  /*Configure GPIO pin Output Level : CH_FBX(PB3) CH_FBY(PB4) 默认低电平
+    (4053 选 X0/Y0 = driver FB 送往 JB3/JB4, 与原仓库一致; 严禁悬空,
+    否则反馈出口选通状态不定, JB3/JB4 波形异常) */
+  HAL_GPIO_WritePin(GPIOB, CH_FBX_Pin|CH_FBY_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pins : X_SCL1_Pin X_SDA1_Pin X_SDA2_Pin X_SCL2_Pin
                            X_SDA3_Pin X_SCL3_Pin CS_Pin Y_SCL1_Pin
                            Y_SDA1_Pin Y_SCL2_Pin Y_SDA2_Pin Y_SCL3_Pin
@@ -78,6 +83,14 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pin = LED_USB_Pin|LED_X_Pin|LED_Y_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : CH_FBX_Pin(PB3) CH_FBY_Pin(PB4) 推挽/下拉/低速
+    (74HC4053 反馈出口选择脚, 必须显式驱动, 不得悬空) */
+  GPIO_InitStruct.Pin   = CH_FBX_Pin|CH_FBY_Pin;
+  GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull  = GPIO_PULLDOWN;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 

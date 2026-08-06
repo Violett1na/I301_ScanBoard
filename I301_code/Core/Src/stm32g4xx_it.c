@@ -69,11 +69,6 @@ extern DMA_HandleTypeDef hdma_dac1_ch1;
 extern DMA_HandleTypeDef hdma_dac1_ch2;
 extern DMA_HandleTypeDef hdma_dac4_ch1;
 extern DMA_HandleTypeDef hdma_dac4_ch2;
-extern volatile uint32_t ad_da_underrun_cnt;
-extern volatile uint32_t ad_da_underrun_dac1;
-extern volatile uint32_t ad_da_underrun_dac4;
-extern volatile uint32_t ad_da_tx_tc_cnt[4];    /* AD_DA_CH_NUM, 避免在 it.c 引入 task.h */
-extern void ad_da_te_latch(uint8_t ch, DMA_Channel_TypeDef *dma_ch);  /* TE 现场锁存(task.c) */
 
 /* USER CODE END EV */
 
@@ -305,62 +300,25 @@ void USB_LP_IRQHandler(void)
     HAL_PCD_IRQHandler(&hpcd_USB_FS);
 }
 
-/* TX DMA 中断: HT 已在 AD_DA_Init 屏蔽; 【诊断阶段】TC 解蔽用于计数实际搬运速率
-   (理论 15625 Hz/路), 诊断结束后还原为 HAL_DMA_IRQHandler + 全屏蔽 */
+/* TX DMA 中断: 循环模式 HT/TC 已在 AD_DA_Init 中屏蔽, 此处仅兜底传输错误(TE) */
 void DMA1_Channel5_IRQHandler(void)
 {
-    if (DMA1->ISR & DMA_ISR_TCIF5)
-    {
-        DMA1->IFCR = DMA_IFCR_CTCIF5;
-        ad_da_tx_tc_cnt[0]++;
-    }
-    if (DMA1->ISR & DMA_ISR_TEIF5)
-    {
-        ad_da_te_latch(0U, DMA1_Channel5);      /* 先抢现场, HAL 会清标志/关通道 */
-        HAL_DMA_IRQHandler(&hdma_dac1_ch1);
-    }
+    HAL_DMA_IRQHandler(&hdma_dac1_ch1);
 }
 
 void DMA1_Channel6_IRQHandler(void)
 {
-    if (DMA1->ISR & DMA_ISR_TCIF6)
-    {
-        DMA1->IFCR = DMA_IFCR_CTCIF6;
-        ad_da_tx_tc_cnt[1]++;
-    }
-    if (DMA1->ISR & DMA_ISR_TEIF6)
-    {
-        ad_da_te_latch(1U, DMA1_Channel6);      /* 先抢现场, HAL 会清标志/关通道 */
-        HAL_DMA_IRQHandler(&hdma_dac1_ch2);
-    }
+    HAL_DMA_IRQHandler(&hdma_dac1_ch2);
 }
 
 void DMA1_Channel7_IRQHandler(void)
 {
-    if (DMA1->ISR & DMA_ISR_TCIF7)
-    {
-        DMA1->IFCR = DMA_IFCR_CTCIF7;
-        ad_da_tx_tc_cnt[2]++;
-    }
-    if (DMA1->ISR & DMA_ISR_TEIF7)
-    {
-        ad_da_te_latch(2U, DMA1_Channel7);      /* 先抢现场, HAL 会清标志/关通道 */
-        HAL_DMA_IRQHandler(&hdma_dac4_ch1);
-    }
+    HAL_DMA_IRQHandler(&hdma_dac4_ch1);
 }
 
 void DMA1_Channel8_IRQHandler(void)
 {
-    if (DMA1->ISR & DMA_ISR_TCIF8)
-    {
-        DMA1->IFCR = DMA_IFCR_CTCIF8;
-        ad_da_tx_tc_cnt[3]++;
-    }
-    if (DMA1->ISR & DMA_ISR_TEIF8)
-    {
-        ad_da_te_latch(3U, DMA1_Channel8);      /* 先抢现场, HAL 会清标志/关通道 */
-        HAL_DMA_IRQHandler(&hdma_dac4_ch2);
-    }
+    HAL_DMA_IRQHandler(&hdma_dac4_ch2);
 }
 
 /* DAC 欠载中断兜底: TIM6_DAC 线挂 DAC1&DAC3、TIM7_DAC 线挂 DAC2&DAC4(本工程用 DAC1/DAC4)。
@@ -369,21 +327,11 @@ void DMA1_Channel8_IRQHandler(void)
    严禁因无 handler 落入 Default_Handler(B .)而整机死锁。 */
 void TIM6_DAC_IRQHandler(void)
 {
-    if (DAC1->SR & (DAC_SR_DMAUDR1 | DAC_SR_DMAUDR2))
-    {
-        ad_da_underrun_cnt++;
-        ad_da_underrun_dac1++;
-        DAC1->SR = DAC_SR_DMAUDR1 | DAC_SR_DMAUDR2;
-    }
+    DAC1->SR = DAC_SR_DMAUDR1 | DAC_SR_DMAUDR2;
 }
 
 void TIM7_DAC_IRQHandler(void)
 {
-    if (DAC4->SR & (DAC_SR_DMAUDR1 | DAC_SR_DMAUDR2))
-    {
-        ad_da_underrun_cnt++;
-        ad_da_underrun_dac4++;
-        DAC4->SR = DAC_SR_DMAUDR1 | DAC_SR_DMAUDR2;
-    }
+    DAC4->SR = DAC_SR_DMAUDR1 | DAC_SR_DMAUDR2;
 }
 /* USER CODE END 1 */

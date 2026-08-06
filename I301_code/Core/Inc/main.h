@@ -112,7 +112,14 @@ void Error_Handler(void);
 #define Y_SDA3_GPIO_Port GPIOC
 
 /* USER CODE BEGIN Private defines */
-
+/* PB3/PB4 标签 CH-FBX / CH-FBY：74HC4053(U10) 反馈出口选择脚，.ioc 未登记，手工补充；
+ * 标签含连字符非合法 C 标识符，宏名改用下划线。
+ * 低电平 = 两轴选 X0/Y0 = driver 位置反馈 FB 送往 JB3/JB4（默认，与原仓库一致）；
+ * 高电平 = 选 X1/Y1 = MCU DAC 重建（DA_FBX/DA_FBY）切至 JB3/JB4（外部环回预留）。 */
+#define CH_FBX_Pin GPIO_PIN_3
+#define CH_FBX_GPIO_Port GPIOB
+#define CH_FBY_Pin GPIO_PIN_4
+#define CH_FBY_GPIO_Port GPIOB
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
