@@ -139,8 +139,17 @@ int main(void)
     //   DAC_INY_SET(vy);
     // }
     /* USER CODE END WHILE */
-    
+
     /* USER CODE BEGIN 3 */
+    /* 调试辅助: 每秒打印一次 AD-DA 通路关键值(验证完成后删除) */
+    {
+      static uint32_t dbg_tick = 0;
+      if ((HAL_GetTick() - dbg_tick) >= 1000U)
+      {
+        dbg_tick = HAL_GetTick();
+        ad_da_debug_print();
+      }
+    }
   }
   /* USER CODE END 3 */
 }

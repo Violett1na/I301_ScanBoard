@@ -93,7 +93,36 @@ typedef void (*ad_da_process_fn_t)(const uint16_t *in[AD_DA_CH_NUM],
 
 extern ad_da_process_fn_t ad_da_process_fn;     /* 算法槽，默认指向 ad_da_process_linear */
 
-/* 默认线性算法：y = (4095 - x) + off，饱和钳位 0..4095 */
+extern volatile uint32_t ad_da_underrun_cnt;    /* DAC 欠载累计计数，正常应恒为 0（调试器可观察） */
+extern volatile uint32_t ad_da_underrun_dac1;   /* DAC1 欠载计数（诊断） */
+extern volatile uint32_t ad_da_underrun_dac4;   /* DAC4 欠载计数（诊断） */
+extern volatile uint32_t ad_da_tx_tc_cnt[AD_DA_CH_NUM];   /* TX DMA 实际搬运计数（诊断，理论各 15625/s） */
+extern volatile uint32_t ad_da_tx_te_cnt[AD_DA_CH_NUM];   /* TX DMA 传输错误(TE)计数（诊断，正常应恒为 0） */
+
+/* 首次 TE 错误快照：TEIF 中断里锁存故障通道现场，事后经串口打印分析。
+ * ch == 0xFF 表示尚未锁存（未发生过 TE） */
+typedef struct
+{
+    volatile uint8_t  ch;       /* 故障通道 0..3（0=dac1_ch1 1=dac1_ch2 2=dac4_ch1 3=dac4_ch2） */
+    volatile uint32_t isr;      /* TE 时刻 DMA1->ISR 原始值（含各通道 GIF/TC/HT/TE 标志） */
+    volatile uint32_t ccr;      /* 故障通道 CCR（EN 是否还在、方向/宽度/循环位） */
+    volatile uint32_t cndtr;    /* 剩余搬运数（判断 TE 发生在块内什么位置） */
+    volatile uint32_t cpar;     /* 外设地址（应等于对应 DAC 的 DHR12Rx 地址） */
+    volatile uint32_t cmar;     /* 内存地址（应落在 tx_buf 范围内） */
+    volatile uint32_t tick;     /* TE 时刻上电毫秒数（判断上电即错还是运行中出错） */
+} ad_da_te_snapshot_t;
+
+extern volatile ad_da_te_snapshot_t ad_da_te_snapshot;
+
+/* TE 锁存：由 stm32g4xx_it.c 的 TEIF 分支在 HAL_DMA_IRQHandler 之前调用
+ * （HAL 处理会清标志/关通道，必须先抢现场）。仅首次 TE 锁存，后续只累加计数 */
+void ad_da_te_latch(uint8_t ch, DMA_Channel_TypeDef *dma_ch);
+
+void ad_da_debug_print(void);                   /* 调试辅助：打印 rx/tx 最新值与欠载计数（主循环周期调用） */
+
+/* 默认线性算法（IN/FB 通道分制，饱和钳位 0..4095）：
+ * IN 通道 ch0/ch2：y = (4095 - x) + off（抵消调理反相，spec §1）
+ * FB 通道 ch1/ch3：y = x + off（静息 0V、有激励时出波形，spec §9.7） */
 void ad_da_process_linear(const uint16_t *in[AD_DA_CH_NUM],
                           uint16_t       *out[AD_DA_CH_NUM],
                           uint16_t        n);
