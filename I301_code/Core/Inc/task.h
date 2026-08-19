@@ -81,7 +81,7 @@ uint16_t adc_filter(uint16_t value);
  * AD-DA 处理通路（1MHz 逐样本线性处理、预留算法槽）
  * spec: docs/superpowers/specs/2026-08-04-ad-da-processing-path-design.md
  * -------------------------------------------------------------- */
-#define AD_DA_BLOCK   64U                       /* RX/TX 乒乓缓冲每通道样本数 */
+#define AD_DA_BLOCK   16U                       /* RX/TX 乒乓缓冲每通道样本数 */
 #define AD_DA_HALF    (AD_DA_BLOCK / 2U)        /* 半块长度 = 块处理单位 */
 #define AD_DA_CH_NUM  4U                        /* 通道数: 0=vx 1=ix 2=vy 3=iy */
 

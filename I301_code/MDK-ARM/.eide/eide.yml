@@ -117,7 +117,7 @@ targets:
             language-c: c99
             language-cpp: c++11
             one-elf-section-per-function: true
-            optimization: level-0
+            optimization: level-2
             short-enums#wchar: true
             warnings: ac5-like-warnings
           global:
