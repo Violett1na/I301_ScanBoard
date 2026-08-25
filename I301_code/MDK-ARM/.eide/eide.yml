@@ -37,6 +37,7 @@ virtualFolder:
                 - path: ../Core/Src/task.c
                 - path: ../Core/Src/opamp.c
                 - path: ../Core/Src/bsp_flash.c
+                - path: ../Core/Src/ocd.c
               folders: []
     - name: Drivers
       files: []

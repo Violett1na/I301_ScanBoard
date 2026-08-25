@@ -29,6 +29,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "task.h"
+#include "ocd.h"
 #include "usb_device.h"
 
 /* USER CODE END Includes */
@@ -115,6 +116,13 @@ int main(void)
   /* 启动 AD-DA 处理通路: 须在 param_init 之后, 使 comp 偏置首拍生效。
      硬件约束: JP3 必须断开(或外部 IN± 不接), 见 spec §3.2 */
   AD_DA_Init();
+  ocd_init();   /* 软件过流检测: 包装算法槽, 须在 AD_DA_Init 之后 */
+
+  for (uint8_t i = 0; i < 6; i++)
+	{
+		LED_USB_TOGGLE();
+		HAL_Delay(150);
+	}
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -123,6 +131,12 @@ int main(void)
   while (1)
   { 
     USBD_BULK_Recv();
+#if MSB_TEST_ENABLE
+    msb_test_poll();
+#endif
+    /* VOFA 波形观测: ch1=vx ch2=vy(管线输入, 静息应≈2048 窄带) ch3=ix(X 轴电流对照),
+       逗号分隔对齐 VOFA FireWater 默认 */
+    printf("%d,%d,%d\n", adc_value.vx, adc_value.vy, adc_value.ix);
     // if (DMA1->ISR & (DMA_ISR_TCIF1 | DMA_ISR_TCIF2 | DMA_ISR_TCIF3 | DMA_ISR_TCIF4))
 	  // {
 		//   // 一次性清除所有通道的标志

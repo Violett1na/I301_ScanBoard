@@ -341,7 +341,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32G474xx</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32G4xx_HAL_Driver/Inc;../Drivers/STM32G4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32G4xx/Include;../Drivers/CMSIS/Include</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32G4xx_HAL_Driver/Inc;../Drivers/STM32G4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32G4xx/Include;../Drivers/CMSIS/Include;..\Proto\Inc;..\USB\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -699,6 +699,31 @@
               <FileName>stm32g4xx_hal_msp.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/stm32g4xx_hal_msp.c</FilePath>
+            </File>
+            <File>
+              <FileName>ad5290.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\ad5290.c</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_flash.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\bsp_flash.c</FilePath>
+            </File>
+            <File>
+              <FileName>mylog.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\mylog.c</FilePath>
+            </File>
+            <File>
+              <FileName>task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\task.c</FilePath>
+            </File>
+            <File>
+              <FileName>ocd.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\ocd.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1284,6 +1309,21 @@
               <FileType>1</FileType>
               <FilePath>../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart_ex.c</FilePath>
             </File>
+            <File>
+              <FileName>stm32g4xx_hal_pcd.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Drivers\STM32G4xx_HAL_Driver\Src\stm32g4xx_hal_pcd.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32g4xx_hal_pcd_ex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Drivers\STM32G4xx_HAL_Driver\Src\stm32g4xx_hal_pcd_ex.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32g4xx_ll_usb.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Drivers\STM32G4xx_HAL_Driver\Src\stm32g4xx_ll_usb.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -1293,6 +1333,71 @@
               <FileName>system_stm32g4xx.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/system_stm32g4xx.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>USB</GroupName>
+          <Files>
+            <File>
+              <FileName>usb_device.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\USB\src\usb_device.c</FilePath>
+            </File>
+            <File>
+              <FileName>usbd_bulk.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\USB\src\usbd_bulk.c</FilePath>
+            </File>
+            <File>
+              <FileName>usbd_conf.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\USB\src\usbd_conf.c</FilePath>
+            </File>
+            <File>
+              <FileName>usbd_core.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\USB\src\usbd_core.c</FilePath>
+            </File>
+            <File>
+              <FileName>usbd_ctlreq.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\USB\src\usbd_ctlreq.c</FilePath>
+            </File>
+            <File>
+              <FileName>usbd_desc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\USB\src\usbd_desc.c</FilePath>
+            </File>
+            <File>
+              <FileName>usbd_ioreq.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\USB\src\usbd_ioreq.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Proto</GroupName>
+          <Files>
+            <File>
+              <FileName>ls_proto.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Proto\Src\ls_proto.c</FilePath>
+            </File>
+            <File>
+              <FileName>ls_proto_device_app.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Proto\Src\ls_proto_device_app.c</FilePath>
+            </File>
+            <File>
+              <FileName>ls_proto_receive.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Proto\Src\ls_proto_receive.c</FilePath>
+            </File>
+            <File>
+              <FileName>ls_proto_trans.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Proto\Src\ls_proto_trans.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1315,5 +1420,14 @@
     </components>
     <files/>
   </RTE>
+
+  <LayerInfo>
+    <Layers>
+      <Layer>
+        <LayName>I301_code</LayName>
+        <LayPrjMark>1</LayPrjMark>
+      </Layer>
+    </Layers>
+  </LayerInfo>
 
 </Project>
