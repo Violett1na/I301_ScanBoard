@@ -30,6 +30,7 @@
 /* USER CODE BEGIN Includes */
 #include "task.h"
 #include "ocd.h"
+#include "ocd_sig.h"
 #include "usb_device.h"
 
 /* USER CODE END Includes */
@@ -117,6 +118,7 @@ int main(void)
      硬件约束: JP3 必须断开(或外部 IN± 不接), 见 spec §3.2 */
   AD_DA_Init();
   ocd_init();   /* 软件过流检测: 包装算法槽, 须在 AD_DA_Init 之后 */
+  ocd_sig_init();   /* 过流PWM信令: 最外层包装, 须在 ocd_init 之后 */
 
   for (uint8_t i = 0; i < 6; i++)
 	{
