@@ -33,8 +33,8 @@
 - PA5/PA8 的 ADC 功能（ADC2_IN13 / ADC5_IN1）均未被占用，可安全改作定时器复用输出。
 - 定时器资源：
   - **TIM2**：`.ioc` 已有 `MX_TIM2_Init`（现配 PSC=170−1、ARR=99、TRGO=update），MspInit 中 TIM2_IRQn 已使能（优先级 0）但定时器从未启动；task.c 存有 TIM2 中断死代码（README 警示"不得再启用 TIM2 中断"——回调直写 DHR 与 TX DMA 竞争）。本设计复用作 PWM，**不开更新中断**，并把 NVIC 中 TIM2_IRQn 禁掉。
-  - **TIM1**：全工程未用，高级定时器；按 task.c 的 `htim6` 先例手工建句柄（`__HAL_RCC_TIM1_CLK_ENABLE` + 手填 Init），`HAL_TIM_PWM_Start` 会处理 MOE。
-  - 定时时钟 170MHz（APB1/APB2 均 170MHz）⇒ 1kHz = ARR 170000−1、CCR 85000。
+  - **TIM1**：全工程未用，高级定时器；按 task.c 的 `htim6` 先例手工建句柄（`__HAL_RCC_TIM1_CLK_ENABLE` + 手填 Init），`HAL_TIM_PWM_Start` 会处理 MOE。**TIM1 是 16 位定时器（ARR≤65535）**，不能直挂 170000 大周期。
+  - 定时时钟 170MHz（APB1/APB2 均 170MHz）⇒ 1kHz 统一取 **PSC=170−1、ARR=1000−1、CCR=500**（170MHz/170/1000=1kHz，50% 占空）；TIM2 虽为 32 位可用大 ARR，但与 TIM1 取完全相同配置，两路常数一致。（2026-08-27 计划阶段修正：初稿 ARR=170000−1 仅适用 32 位定时器，TIM1 放不下。）
 - 检测输入：ix = `in[1]`（ADC2/PA0）、iy = `in[3]`（ADC5/PA9），同 ocd。
 
 ## 3. 与既有 OCD 模块的关系
@@ -75,7 +75,7 @@ SIG_OFF ──(本轴连续 peg > OCD_SIG_TRIP_RUN)──→ SIG_ON
 | 4053 输入 | X1（DA_FBX 网，经 R6 出板） | Y1（DA_FBY 网，经 R8 出板） |
 | 4053 选择脚 | PB3（CH_FBX） | PB4（CH_FBY） |
 
-- **规格**：1kHz、50% 占空、3V3 逻辑摆幅；`OCD_SIG_PERIOD` = 170000（ARR+1 = 170MHz/1kHz）、`OCD_SIG_DUTY` = 85000（CCR）。
+- **规格**：1kHz、50% 占空、3V3 逻辑摆幅。两路定时器同配：`OCD_SIG_PSC` = 170−1（170MHz/170 = 1MHz 计数）、`OCD_SIG_ARR` = 1000−1（1MHz/1000 = 1kHz）、`OCD_SIG_CCR` = 500（50% 占空）。TIM1 为 16 位定时器，此配置是其可容纳的 1kHz 方案；TIM2 取同配以统一常数。
 - **上电即跑、永不启停**：`ocd_sig_init()` 配好即 `HAL_TIM_PWM_Start`；跳闸/释放只写 PB3/PB4 ⇒ 切换瞬时、无启停时序管理（本方案相对 v1 与"跳闸才启定时器"备选的核心收益）。正常态 PWM 被 4053 门在外面空跑。
 - **让路**（均在 `ocd_sig_init()` 内，先于定时器启动）：
   - `HAL_DAC_Stop(&hdac1, DAC_CHANNEL_2)`（PA5 让位）；
@@ -92,8 +92,9 @@ SIG_OFF ──(本轴连续 peg > OCD_SIG_TRIP_RUN)──→ SIG_ON
 | `OCD_SIG_ENABLE` | 1U | 总开关，0 = 编译期整体摘除（回退） |
 | `OCD_SIG_TRIP_RUN` | 8U | 同 `OCD_TRIP_RUN` 语义，按轴独立计数 |
 | `OCD_SIG_RELEASE_MS` | 1000U | 防抖释放窗（用户选定 1s） |
-| `OCD_SIG_PERIOD` | 170000U | ARR+1 = 170MHz / 1kHz |
-| `OCD_SIG_DUTY` | 85000U | CCR = 50% 占空 |
+| `OCD_SIG_PSC` | 170U−1 | 170MHz/170 = 1MHz 计数时钟（两路同配） |
+| `OCD_SIG_ARR` | 1000U−1 | 1MHz/1000 = 1kHz；TIM1 为 16 位，此为其可容纳方案 |
+| `OCD_SIG_CCR` | 500U | 500/1000 = 50% 占空 |
 | `OCD_SIG_FORCE` | 0U | 诊断：1 = 强置两轴 SIG_ON（验信令链，不需真过流），用完回 0 |
 
 peg 定义复用 ocd 的语义（==0/==4095）；**ADC 量程修复后与 ocd 一处同步修改**（折返冲顶系 ADC 量程 bug，后续修）。
