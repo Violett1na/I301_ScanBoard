@@ -4,11 +4,14 @@
  * 软件过流检测实现(时序语义: 200ms 强制 + 1s 盲期, 用户选定)
  *
  * 时间线: ARMED ──(连续 peg >8)──→ HOLD ──(200ms)──→ BLANK ──(满1s)──→ ARMED
+ * ⚠️ 本行为受 OCD_ENABLE 宏门控(见 ocd.h): 0 = 整体摘除(过流只发信令不动图像)。
  *   HOLD : X/Y IN 通道强制 2048、FB 强制 0, 斩断命令级过流;
  *   BLANK: 恢复跟随, 检测关闭防抖, 距跳闸满 OCD_CYCLE_MS 重新武装。
  * 全部逻辑跑在 1MHz 管线 ISR(算法槽包装), 每半块 8 样本, 开销为
  * 每样本几次整数比较, 远裕于 32µs 死线(同 MSB 统计先例)。
  * ------------------------------------------------------------------ */
+
+#if OCD_ENABLE
 
 /* ---- 模块内部状态 ---- */
 static ad_da_process_fn_t s_inner;                 /* 被包装的内层算法 */
@@ -118,5 +121,16 @@ uint32_t ocd_trip_count(void)
 {
     return s_trips;
 }
+
+#else /* !OCD_ENABLE —— 编译期整体摘除图像干预, 空实现保调用点免改
+         (与 ocd_sig.c 尾部回退模式一致)。信令链路由 ocd_sig 独立承担,
+         算法槽链 = linear → ocd_sig。2026-08-28 用户决策, 见
+         docs/superpowers/specs/2026-08-28-ocd-image-intervention-disable-design.md */
+
+void ocd_init(void) {}
+uint8_t ocd_state(void) { return OCD_STATE_ARMED; }   /* 未干预: 报告"武装态"供观测 */
+uint32_t ocd_trip_count(void) { return 0U; }
+
+#endif /* OCD_ENABLE */
 
 /* file end */
