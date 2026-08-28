@@ -139,7 +139,7 @@ int main(void)
 #endif
     /* VOFA 波形观测: ch1=vx ch2=vy(管线输入, 静息应≈2048 窄带) ch3=ix(X 轴电流对照),
        逗号分隔对齐 VOFA FireWater 默认 */
-    printf("%d,%d,%d\n", adc_value.vx, adc_value.vy, adc_value.ix);
+    // printf("%u,%d,%d,%d\n", HAL_GetTick(), adc_value.vx, adc_value.vy, adc_value.ix);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
