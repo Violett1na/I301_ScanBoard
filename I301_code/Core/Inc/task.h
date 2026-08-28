@@ -81,7 +81,12 @@ uint16_t adc_filter(uint16_t value);
  * AD-DA 处理通路（1MHz 逐样本线性处理、预留算法槽）
  * spec: docs/superpowers/specs/2026-08-04-ad-da-processing-path-design.md
  * -------------------------------------------------------------- */
-#define AD_DA_BLOCK   16U                       /* RX/TX 乒乓缓冲每通道样本数 */
+/* ⚠️ 块长即中断预算: 每拍预算 = AD_DA_HALF × 1µs × 170MHz。
+ * 16(8µs/1360周期)时全链(ocd_sig+ocd+线性, 实测≈1200-1400周期)贴线偏超,
+ * 上电靠 ocd 跳闸 HOLD 的廉价路径侥幸存活, HOLD 结束(200ms)即整机冻结
+ * (2026-08-28 根因, 详见记忆); 32(16µs/2720周期)占用率≈50%, 裕量充足。
+ * 勿再改小; 如需更低延迟先重测全链周期开销。 */
+#define AD_DA_BLOCK   32U                       /* RX/TX 乒乓缓冲每通道样本数 */
 #define AD_DA_HALF    (AD_DA_BLOCK / 2U)        /* 半块长度 = 块处理单位 */
 #define AD_DA_CH_NUM  4U                        /* 通道数: 0=vx 1=ix 2=vy 3=iy */
 
