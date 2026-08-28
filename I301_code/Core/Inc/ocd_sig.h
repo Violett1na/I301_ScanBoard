@@ -24,7 +24,6 @@
 #define OCD_SIG_PSC         (170U - 1U)   /* 170MHz/170 = 1MHz 计数时钟(两路同配) */
 #define OCD_SIG_ARR         (1000U - 1U)  /* 1MHz/1000 = 1kHz; TIM1 为 16 位, 此为其可容纳方案 */
 #define OCD_SIG_CCR         500U          /* 500/1000 = 50% 占空 */
-#define OCD_SIG_FORCE       0U            /* 诊断: 1 = 强置两轴信令开(上板验链), 用完回 0 */
 
 /* ---- peg 判据(复用 ocd 语义: 撞量程轨) ---- */
 #define OCD_SIG_IS_PEG(s)   (((s) == 0U) || ((s) == 4095U))

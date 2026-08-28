@@ -15,7 +15,7 @@
  *
  * 挂载: 算法槽包装——ocd_init() 把 ad_da_process_fn 包一层,
  *   检测与强制都发生在 1MHz 管线 ISR 内(实时数据通路例外条款),
- *   跳闸延迟 ≤ 半块 8µs + 计数窗。时序用 HAL_GetTick()(ISR 内读
+ *   跳闸延迟 ≤ 半块 16µs + 计数窗。时序用 HAL_GetTick()(ISR 内读
  *   uwTick, 误差 ≤1ms)。
  *
  * 注意: 盲期内持续故障会驱动输出最长 (OCD_CYCLE_MS-OCD_HOLD_MS),

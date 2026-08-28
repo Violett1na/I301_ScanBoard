@@ -31,3 +31,7 @@ code.si4project/
 *.hexcode.si4project/
 MDK-ARM/ML-S.uvprojx
 doc/测试数据/pic/
+# 构建/工具产物 (2026-08-28)
+I301_code/MDK-ARM/build_cli_log.txt
+I301_code/MDK-ARM/build_log.txt
+I301_code/MDK-ARM/.vscode/

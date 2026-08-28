@@ -70,8 +70,6 @@ extern DMA_HandleTypeDef hdma_dac1_ch1;
 extern DMA_HandleTypeDef hdma_dac1_ch2;
 extern DMA_HandleTypeDef hdma_dac4_ch1;
 extern DMA_HandleTypeDef hdma_dac4_ch2;
-extern TIM_HandleTypeDef htim3;   /* 点阵直出诊断模式: 30kHz 步进节拍 */
-extern TIM_HandleTypeDef htim6;   /* MSB 对照测试: major-carry 序列步进 */
 
 /* USER CODE END EV */
 
@@ -303,14 +301,6 @@ void USB_LP_IRQHandler(void)
     HAL_PCD_IRQHandler(&hpcd_USB_FS);
 }
 
-/* TIM3 更新中断: 点阵直出诊断模式的 30kHz 步进节拍(task.c 回调直写 DHR,
-   无 DMA)。正常 AD-DA 跟随通路(AD_DA_PATTERN_DIRECT_ENABLE=0)下 TIM3 中断
-   从未使能, 此 handler 空转不到。 */
-void TIM3_IRQHandler(void)
-{
-    HAL_TIM_IRQHandler(&htim3);
-}
-
 /* TX DMA 中断: 循环模式 HT/TC 已在 AD_DA_Init 中屏蔽, 此处仅兜底传输错误(TE) */
 void DMA1_Channel5_IRQHandler(void)
 {
@@ -339,13 +329,6 @@ void DMA1_Channel8_IRQHandler(void)
 void TIM6_DAC_IRQHandler(void)
 {
     DAC1->SR = DAC_SR_DMAUDR1 | DAC_SR_DMAUDR2;
-#if MSB_TEST_ENABLE
-    /* MSB 测试: TIM6 步进中断与 DAC 欠载共用本向量, 仅在 UIE 使能时路由 */
-    if (TIM6->DIER & TIM_DIER_UIE)
-    {
-        HAL_TIM_IRQHandler(&htim6);
-    }
-#endif
 }
 
 void TIM7_DAC_IRQHandler(void)

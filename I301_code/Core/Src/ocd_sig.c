@@ -23,8 +23,8 @@
  *   ④ TIM2_IRQn —— MspInit 曾使能(优先级 0)但从未配中断源; 本模块
  *      明确不开更新中断, 并在 NVIC 中禁掉(规避 task.c TIM2 中断死
  *      代码旧账, README 警示);
- *   ⑤ TIM1 —— 原全工程未用, 本模块新建使用(手工句柄, 同 task.c
- *      htim6 先例), 不覆盖任何既有外设。
+ *   ⑤ TIM1 —— 原全工程未用, 本模块新建使用(手工句柄, .ioc 未登记),
+ *      不覆盖任何既有外设。
  *   回退边界: OCD_SIG_ENABLE=0 时上述覆盖一律不发生, PA5/PA8 保持
  *   DAC 反馈输出——该回退仅作信令模块自身异常时的应急手段, 正常
  *   运行不再使用 DAC 反馈功能。
@@ -119,8 +119,8 @@ static void ocd_sig_pwm_tim2_init(void)
 }
 
 /* ---- Y 轴 PWM(再配置⑤): TIM1 原全工程未用, 本模块新建使用 ----
- * 按 task.c htim6 先例手工建句柄(.ioc 未登记, 无 CubeMX 生成初始化,
- * 不覆盖任何既有外设配置); 时钟在函数内手动使能。
+ * 手工建句柄(.ioc 未登记, 无 CubeMX 生成初始化, 不覆盖任何既有外设
+ * 配置); 时钟在函数内手动使能。
  * TIM1 为高级定时器(带刹车单元), HAL_TIM_PWM_Start 内部处理 MOE。
  * State=RESET 时 HAL_TIM_PWM_Init 回调的是弱定义 HAL_TIM_PWM_MspInit
  * (工程无强定义, 空操作)。
@@ -188,13 +188,6 @@ static void ocd_sig_process(const uint16_t *in[AD_DA_CH_NUM],
             HAL_GPIO_WritePin(CH_FBY_GPIO_Port, CH_FBY_Pin, GPIO_PIN_RESET);
         }
     }
-
-#if OCD_SIG_FORCE
-    /* 诊断: 强置两轴信令开(每拍覆写, 压过状态机的一切切换;
-       只影响电气链路验证, 不改动状态机自身计数) */
-    HAL_GPIO_WritePin(CH_FBX_GPIO_Port, CH_FBX_Pin, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(CH_FBY_GPIO_Port, CH_FBY_Pin, GPIO_PIN_SET);
-#endif
 
     s_inner(in, out, n);   /* 透传: 检测与输出完全解耦 */
 }
