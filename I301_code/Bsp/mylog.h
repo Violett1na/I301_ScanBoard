@@ -1,3 +1,8 @@
+/* mylog.h —— 编译期裁剪日志框架接口(I301 振镜 XY 板)
+ * 职责: 日志等级与模块开关宏(编译期裁剪)、log_output/log_output_hex
+ *   核心接口、LOG_* 快捷宏。
+ * 上下游: mylog.c 实现; 全仓引用; 时间戳经 log_get_tick
+ *   (默认 HAL_GetTick, 可换 RTOS)。 */
 #ifndef __MYLOG_H__
 #define __MYLOG_H__
 
@@ -29,7 +34,7 @@
 uint32_t log_get_tick(void);
 
 /* =================== 日志等级 =================== */
-typedef enum {  
+typedef enum {
     LOG_LEVEL_ERROR = 0,
     LOG_LEVEL_WARN,
     LOG_LEVEL_INFO,

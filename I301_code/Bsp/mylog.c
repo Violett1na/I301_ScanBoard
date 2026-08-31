@@ -1,3 +1,7 @@
+/* mylog.c —— 日志框架实现(等级过滤 + 时间戳 + hex 转储)
+ * 职责: log_output(等级标签 + 模块标签 + 时间戳)、log_output_hex
+ *   (每行 16 字节, snprintf 拼接)。
+ * 上下游: printf 走串口控制台; LOG_ENABLE=0 整体编译裁剪。 */
 #include "mylog.h"
 #include <stdarg.h>
 

@@ -40,17 +40,17 @@ static int app_ctrl_rdac(const ls_ctrl_rdac_t *rdac)
 
     if (rdac->xy == LS_RADC_X)
     {
-        switch (rdac->ch)   
+        switch (rdac->ch)
         {
-            case LS_RADC_CH_1: 
+            case LS_RADC_CH_1:
                 r.x1 = rdac->code;
                 ad5290_set_code(AD5290_AXIS_X, AD5290_CH_1, rdac->code);
                 break;
-            case LS_RADC_CH_2: 
+            case LS_RADC_CH_2:
                 r.x2 = rdac->code;
                 ad5290_set_code(AD5290_AXIS_X, AD5290_CH_2, rdac->code);
                 break;
-            case LS_RADC_CH_3: 
+            case LS_RADC_CH_3:
                 r.x3 = rdac->code;
                 ad5290_set_code(AD5290_AXIS_X, AD5290_CH_3, rdac->code);
                 break;
@@ -60,17 +60,17 @@ static int app_ctrl_rdac(const ls_ctrl_rdac_t *rdac)
     }
     else if (rdac->xy == LS_RADC_Y)
     {
-        switch (rdac->ch)   
+        switch (rdac->ch)
         {
-            case LS_RADC_CH_1: 
+            case LS_RADC_CH_1:
                 r.y1 = rdac->code;
                 ad5290_set_code(AD5290_AXIS_Y, AD5290_CH_1, rdac->code);
                 break;
-            case LS_RADC_CH_2: 
+            case LS_RADC_CH_2:
                 r.y2 = rdac->code;
                 ad5290_set_code(AD5290_AXIS_Y, AD5290_CH_2, rdac->code);
                 break;
-            case LS_RADC_CH_3: 
+            case LS_RADC_CH_3:
                 r.y3 = rdac->code;
                 ad5290_set_code(AD5290_AXIS_Y, AD5290_CH_3, rdac->code);
                 break;
