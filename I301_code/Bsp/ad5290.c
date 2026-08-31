@@ -190,7 +190,7 @@ static void ad5290_write_all(const uint8_t codes[AD5290_TOTAL_NUM])
 
 /* -------------------- 对外接口 -------------------- */
 
-void AD5290_Init(void)
+void ad5290_init(void)
 {
     ad5290_timing_init();
 
@@ -198,41 +198,54 @@ void AD5290_Init(void)
     CS_HIGH();
     GPIOC->BSRR = ((uint32_t)ALL_SCL_PINS) << 16U;
 
-    /* 6 路写入中点 */
-    // uint8_t codes[AD5290_TOTAL_NUM];
-    // for (uint32_t i = 0; i < AD5290_TOTAL_NUM; ++i) {
-    //     codes[i] = AD5290_CODE_MID;
-    // }
-    // ad5290_write_all(codes);
+    /* 码值写入由上层完成（首次为 param_init 经 SetAllCode），见头文件用法 5) */
 }
 
-void AD5290_SetCode(ad5290_axis_e axis, ad5290_ch_e ch, uint8_t code)
+void ad5290_set_code(ad5290_axis_e axis, ad5290_ch_e ch, uint8_t code)
 {
-    if ((uint32_t)axis >= AD5290_AXIS_NUM)    return;
-    if ((uint32_t)ch   >= AD5290_CH_PER_AXIS) return;
+    if ((uint32_t)axis >= AD5290_AXIS_NUM)
+    {
+        return;
+    }
+    if ((uint32_t)ch >= AD5290_CH_PER_AXIS)
+    {
+        return;
+    }
 
     ad5290_write_single(pin_index(axis, ch), code);
 }
 
-void AD5290_SetAllCode(const uint8_t codes[AD5290_TOTAL_NUM])
+void ad5290_set_all_code(const uint8_t codes[AD5290_TOTAL_NUM])
 {
-    if (codes == NULL) return;
+    if (codes == NULL)
+    {
+        return;
+    }
     ad5290_write_all(codes);
 }
 
-void AD5290_SetOhm(ad5290_axis_e axis, ad5290_ch_e ch, float ohm)
+void ad5290_set_ohm(ad5290_axis_e axis, ad5290_ch_e ch, float ohm)
 {
-    if ((uint32_t)axis >= AD5290_AXIS_NUM)    return;
-    if ((uint32_t)ch   >= AD5290_CH_PER_AXIS) return;
+    if ((uint32_t)axis >= AD5290_AXIS_NUM)
+    {
+        return;
+    }
+    if ((uint32_t)ch >= AD5290_CH_PER_AXIS)
+    {
+        return;
+    }
 
     uint32_t idx  = pin_index(axis, ch);
     uint8_t  code = ohm_to_code(ohm, s_rab[idx]);
     ad5290_write_single(idx, code);
 }
 
-void AD5290_SetAllOhm(const float ohms[AD5290_TOTAL_NUM])
+void ad5290_set_all_ohm(const float ohms[AD5290_TOTAL_NUM])
 {
-    if (ohms == NULL) return;
+    if (ohms == NULL)
+    {
+        return;
+    }
 
     uint8_t codes[AD5290_TOTAL_NUM];
     for (uint32_t i = 0; i < AD5290_TOTAL_NUM; ++i) {
@@ -241,10 +254,16 @@ void AD5290_SetAllOhm(const float ohms[AD5290_TOTAL_NUM])
     ad5290_write_all(codes);
 }
 
-uint8_t AD5290_GetCode(ad5290_axis_e axis, ad5290_ch_e ch)
+uint8_t ad5290_get_code(ad5290_axis_e axis, ad5290_ch_e ch)
 {
-    if ((uint32_t)axis >= AD5290_AXIS_NUM)    return 0U;
-    if ((uint32_t)ch   >= AD5290_CH_PER_AXIS) return 0U;
+    if ((uint32_t)axis >= AD5290_AXIS_NUM)
+    {
+        return 0U;
+    }
+    if ((uint32_t)ch >= AD5290_CH_PER_AXIS)
+    {
+        return 0U;
+    }
 
     return s_shadow[pin_index(axis, ch)];
 }

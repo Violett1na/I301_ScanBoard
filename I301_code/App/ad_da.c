@@ -1,15 +1,20 @@
-#include "task.h"
-#include "bsp_flash.h"
+#include "ad_da.h"
+#include "param.h"
+#include "adc.h"
+#include "dac.h"
+#include "tim.h"
+#include "opamp.h"
 
-/* Release 版(2026-08-28): 诊断/测试模式(MSB 对照、点阵直出、常量断环、
+/* ad_da.c —— AD-DA 1MHz 实时管线实现(参数层见 param.c)
+ * 内容: 线性算法(ad_da_process_linear)、块处理节拍(DMA HT/TC 回调,
+ *   优先级 0)、ad_da_init(重配/预填/DMA/时序)、TX DMA 手工创建。
+ * 上下游: main.c 按序调用初始化; ocd/ocd_sig 经算法槽包装本管线;
+ *   协议层读 adc_value、经 param 接口写 comp_value(参数实体私有于 param.c)。
+ * Release 版(2026-08-28): 诊断/测试模式(MSB 对照、点阵直出、常量断环、
  * 死区/低滤/中值、ADC_SOLO 等)已全部移除, 保留于 Debug 分支;
  * 见 docs/2026-08-28-release-notes.md。 */
 
-flash_store_t flash_store;
-volatile adc_value_t adc_value;
-
-radc_value_t radc_value;
-comp_value_t comp_value;
+volatile adc_value_t adc_value;    /* 监测快照: ISR 每块写一次, 主循环/协议读 */
 
 /* ------------------------------------------------------------------
  * AD-DA 处理通路（1MHz 逐样本线性处理、预留算法槽）
@@ -37,8 +42,9 @@ static uint16_t tx_buf[AD_DA_CH_NUM][AD_DA_BLOCK];   /* TX: DMA 循环读出至 
  *   FB 通道 ch1/ch3(ix→DA_FBX, iy→DA_FBY): y = x + off
  *     —— 反馈导出要求(2026-08-06 上板确认, spec §9.7): 静息 0V、有激励时出波形,
  *     不反相; 静息 i≈0 ⇒ y=off 钳到 0; 原统一反相公式会把 FB 静息点顶到 ≈2.2V。
- * off 取协议补偿值: ch0/ch1(X轴)用 comp_value.x, ch2/ch3(Y轴)用 comp_value.y
- * (comp_value 主循环写、ISR 读, 对齐加载天然原子, 不加锁)
+ * off 取协议补偿值: ch0/ch1(X轴)用 comp.x, ch2/ch3(Y轴)用 comp.y
+ * (comp 私有于 param.c: 主循环经 setter 写、ISR 经 param_comp() 只读指针读,
+ *  对齐加载天然原子, 不加锁)
  * 刻度: 1 LSB ≈ 0.61mV(DAC端) ≈ 1.22mV(模拟求和点, 经 U15 ×2)；off 为偏置叠加(调零), 非校准
  *
  * 性能要点(死线 = AD_DA_HALF µs = 16µs, 每半块 4 通道 × 16 样本):
@@ -97,12 +103,14 @@ void ad_da_process_linear(const uint16_t *in[AD_DA_CH_NUM],
     int32_t base[AD_DA_CH_NUM];
     uint8_t inv[AD_DA_CH_NUM];
 
+    const volatile comp_value_t *comp = param_comp();   /* ISR 只读, 直读字段零开销 */
+
     /* IN 通道: y = (4095 + off) - x */
-    base[0] = 4095 + (int32_t)comp_value.x;   inv[0] = 1U;   /* vx → DA_INX */
-    base[2] = 4095 + (int32_t)comp_value.y;   inv[2] = 1U;   /* vy → DA_INY */
+    base[0] = 4095 + (int32_t)comp->x;   inv[0] = 1U;   /* vx → DA_INX */
+    base[2] = 4095 + (int32_t)comp->y;   inv[2] = 1U;   /* vy → DA_INY */
     /* FB 通道: y = off + x */
-    base[1] = (int32_t)comp_value.x;          inv[1] = 0U;   /* ix → DA_FBX */
-    base[3] = (int32_t)comp_value.y;          inv[3] = 0U;   /* iy → DA_FBY */
+    base[1] = (int32_t)comp->x;          inv[1] = 0U;   /* ix → DA_FBX */
+    base[3] = (int32_t)comp->y;          inv[3] = 0U;   /* iy → DA_FBY */
 
     for (uint8_t ch = 0; ch < AD_DA_CH_NUM; ch++)
     {
@@ -110,8 +118,9 @@ void ad_da_process_linear(const uint16_t *in[AD_DA_CH_NUM],
     }
 }
 
-/* 算法槽: 运行时可换的处理函数(暂不分配协议命令字, YAGNI) */
-ad_da_process_fn_t ad_da_process_fn = ad_da_process_linear;
+/* 算法槽: 运行时可换的处理函数(暂不分配协议命令字, YAGNI)。
+ * 主侧 init 期一次赋值(ocd/ocd_sig 包装), ISR 每拍读; volatile 显式跨界可见性。 */
+volatile ad_da_process_fn_t ad_da_process_fn = ad_da_process_linear;
 
 /* 块处理: 处理自 offset 起的一个半块(全部通道) */
 static void ad_da_process_half(uint16_t offset)
@@ -129,7 +138,9 @@ static void ad_da_process_half(uint16_t offset)
 
 /* 块处理节拍: 仅以 hadc3(DMA1_Ch1)的 HT/TC 为全局调度点。
  * ISR 内容为纯数据搬运 + 整数 ALU(实时数据通路, AGENTS.md 中断规范
- * 的已确认例外条款), 严禁在此调用协议/flash/日志。 */
+ * 的已确认例外条款), 严禁在此调用协议/flash/日志。
+ * 上下文: 优先级 0(dma.c 设), 死线 = AD_DA_HALF µs = 16µs;
+ * 最坏消耗见 ad_da_process_linear 头注释(全链 ≈1200-1400 周期)。 */
 void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc)
 {
     if (hadc->Instance == ADC3)
@@ -185,8 +196,10 @@ static void tx_dma_create(DMA_HandleTypeDef *hdma, DMA_Channel_TypeDef *ch, uint
 }
 
 
-/*  初始化函数  */
-void AD_DA_Init(void)
+/* AD-DA 通路初始化(时序合约: TX 先于 RX、时钟最后释放):
+ * 校准 → DAC 触发重配 → 输出使能 → 初值/预填 → TX DMA 创建 →
+ * RX DMA 启动 → TIM3 释放。HAL 失败统一 Error_Handler(初始化阶段致命错误)。 */
+void ad_da_init(void)
 {
     DAC_ChannelConfTypeDef sConfig = {0};
 
@@ -208,28 +221,70 @@ void AD_DA_Init(void)
     sConfig.DAC_OutputBuffer            = DAC_OUTPUTBUFFER_DISABLE;
     sConfig.DAC_ConnectOnChipPeripheral = DAC_CHIPCONNECT_EXTERNAL;   /* DAC1: 直接出脚 */
     sConfig.DAC_UserTrimming            = DAC_TRIMMING_FACTORY;
-    if (HAL_DAC_ConfigChannel(&hdac1, &sConfig, DAC_CHANNEL_1) != HAL_OK) Error_Handler();
-    if (HAL_DAC_ConfigChannel(&hdac1, &sConfig, DAC_CHANNEL_2) != HAL_OK) Error_Handler();
+    if (HAL_DAC_ConfigChannel(&hdac1, &sConfig, DAC_CHANNEL_1) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_DAC_ConfigChannel(&hdac1, &sConfig, DAC_CHANNEL_2) != HAL_OK)
+    {
+        Error_Handler();
+    }
     sConfig.DAC_ConnectOnChipPeripheral = DAC_CHIPCONNECT_INTERNAL;   /* DAC4: 片内进 OPAMP4/5 */
-    if (HAL_DAC_ConfigChannel(&hdac4, &sConfig, DAC_CHANNEL_1) != HAL_OK) Error_Handler();
-    if (HAL_DAC_ConfigChannel(&hdac4, &sConfig, DAC_CHANNEL_2) != HAL_OK) Error_Handler();
+    if (HAL_DAC_ConfigChannel(&hdac4, &sConfig, DAC_CHANNEL_1) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_DAC_ConfigChannel(&hdac4, &sConfig, DAC_CHANNEL_2) != HAL_OK)
+    {
+        Error_Handler();
+    }
 
 
     /* 3. 先使能输出端 */
-    if (HAL_DAC_Start(&hdac1, DAC_CHANNEL_1)   != HAL_OK) Error_Handler();
-    if (HAL_DAC_Start(&hdac1, DAC_CHANNEL_2)   != HAL_OK) Error_Handler();
-    if (HAL_DAC_Start(&hdac4, DAC_CHANNEL_1)   != HAL_OK) Error_Handler();
-    if (HAL_DAC_Start(&hdac4, DAC_CHANNEL_2)   != HAL_OK) Error_Handler();
-    if (HAL_OPAMP_Start(&hopamp4)              != HAL_OK) Error_Handler();
-    if (HAL_OPAMP_Start(&hopamp5)              != HAL_OK) Error_Handler();
+    if (HAL_DAC_Start(&hdac1, DAC_CHANNEL_1) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_DAC_Start(&hdac1, DAC_CHANNEL_2) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_DAC_Start(&hdac4, DAC_CHANNEL_1) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_DAC_Start(&hdac4, DAC_CHANNEL_2) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_OPAMP_Start(&hopamp4) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_OPAMP_Start(&hopamp5) != HAL_OK)
+    {
+        Error_Handler();
+    }
 
     /* 4. 初值 + tx_buf 整体预填(防前半块垃圾值):
           IN 通道(CH1) 2048 中点; FB 通道(CH2) 0 —— 静息 0V, 与算法/原仓库
-          DAC_FBX_SET(0) 意图一致(spec §9.7) */
-    if (HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, 2048) != HAL_OK) Error_Handler();
-    if (HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, 0)    != HAL_OK) Error_Handler();
-    if (HAL_DAC_SetValue(&hdac4, DAC_CHANNEL_1, DAC_ALIGN_12B_R, 2048) != HAL_OK) Error_Handler();
-    if (HAL_DAC_SetValue(&hdac4, DAC_CHANNEL_2, DAC_ALIGN_12B_R, 0)    != HAL_OK) Error_Handler();
+          FB 静息 0 意图一致(spec §9.7) */
+    if (HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, 2048) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, 0) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_DAC_SetValue(&hdac4, DAC_CHANNEL_1, DAC_ALIGN_12B_R, 2048) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_DAC_SetValue(&hdac4, DAC_CHANNEL_2, DAC_ALIGN_12B_R, 0) != HAL_OK)
+    {
+        Error_Handler();
+    }
     for (uint8_t ch = 0; ch < AD_DA_CH_NUM; ch++)
     {
         const uint16_t idle_val = ((ch == 1U) || (ch == 3U)) ? 0U : 2048U;
@@ -260,10 +315,22 @@ void AD_DA_Init(void)
     HAL_NVIC_EnableIRQ(DMA1_Channel8_IRQn);
 
     /* 启动 4 路 TX DMA(循环、长度 AD_DA_BLOCK), 启动后即消费预填值 */
-    if (HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t *)tx_buf[0], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK) Error_Handler();
-    if (HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_2, (uint32_t *)tx_buf[1], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK) Error_Handler();
-    if (HAL_DAC_Start_DMA(&hdac4, DAC_CHANNEL_1, (uint32_t *)tx_buf[2], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK) Error_Handler();
-    if (HAL_DAC_Start_DMA(&hdac4, DAC_CHANNEL_2, (uint32_t *)tx_buf[3], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK) Error_Handler();
+    if (HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t *)tx_buf[0], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_2, (uint32_t *)tx_buf[1], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_DAC_Start_DMA(&hdac4, DAC_CHANNEL_1, (uint32_t *)tx_buf[2], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_DAC_Start_DMA(&hdac4, DAC_CHANNEL_2, (uint32_t *)tx_buf[3], AD_DA_BLOCK, DAC_ALIGN_12B_R) != HAL_OK)
+    {
+        Error_Handler();
+    }
 
     /* DAC 欠载兜底中断: HAL_DAC_Start_DMA 已使能 DMAUDRIE, 此处释放 NVIC。
        TIM6_DAC 线挂 DAC1&DAC3、TIM7_DAC 线挂 DAC2&DAC4; 优先级 2
@@ -284,77 +351,30 @@ void AD_DA_Init(void)
 
     /* 6. RX DMA 改指 rx_buf 并启动; 使能 hadc3 DMA 中断(块处理节拍, 优先级已在 dma.c 设 0) */
     HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
-    if (HAL_ADC_Start_DMA(&hadc3, (uint32_t *)rx_buf[0], AD_DA_BLOCK) != HAL_OK) Error_Handler();
-    if (HAL_ADC_Start_DMA(&hadc2, (uint32_t *)rx_buf[1], AD_DA_BLOCK) != HAL_OK) Error_Handler();
-    if (HAL_ADC_Start_DMA(&hadc4, (uint32_t *)rx_buf[2], AD_DA_BLOCK) != HAL_OK) Error_Handler();
-    if (HAL_ADC_Start_DMA(&hadc5, (uint32_t *)rx_buf[3], AD_DA_BLOCK) != HAL_OK) Error_Handler();
+    if (HAL_ADC_Start_DMA(&hadc3, (uint32_t *)rx_buf[0], AD_DA_BLOCK) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_ADC_Start_DMA(&hadc2, (uint32_t *)rx_buf[1], AD_DA_BLOCK) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_ADC_Start_DMA(&hadc4, (uint32_t *)rx_buf[2], AD_DA_BLOCK) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    if (HAL_ADC_Start_DMA(&hadc5, (uint32_t *)rx_buf[3], AD_DA_BLOCK) != HAL_OK)
+    {
+        Error_Handler();
+    }
 
     /* 7. 唯一时钟源最后释放: 收发同拍锁相 */
-    if (HAL_TIM_Base_Start(&htim3) != HAL_OK) Error_Handler();
+    if (HAL_TIM_Base_Start(&htim3) != HAL_OK)
+    {
+        Error_Handler();
+    }
 
 }
 
-
-void ad5290_set_init(void)
-{
-  	AD5290_Init();
-	HAL_Delay(10);
-}
-
-
-void param_init(void)
-{
-	if (bsp_flash_load(&flash_store) == 0)
-	{
-		radc_value  = flash_store.radc;
-		comp_value  = flash_store.comp;
-		LOG_SYS_INFO("load param from flash");
-	}
-	else
-	{
-		radc_value.x1 = 40;
-		radc_value.x2 = 80;
-		radc_value.x3 = 45;
-		radc_value.y1 = 40;
-		radc_value.y2 = 80;
-		radc_value.y3 = 45;
-
-		comp_value.x  = -80;
-		comp_value.y  = -80;
-		LOG_SYS_INFO("load param from default");
-	}
-
-	AD5290_SetAllCode((const uint8_t *)&radc_value);
-	LOG_SYS_INFO("param: x1 = %04d, x2 = %04d, x3 = %04d, y1 = %04d, y2 = %04d, y3 = %04d", 
-					radc_value.x1, radc_value.x2, radc_value.x3, radc_value.y1, radc_value.y2, radc_value.y3);
-	LOG_SYS_INFO("comp: x = %04d, y = %04d", comp_value.x, comp_value.y);
-	LOG_SYS_INFO("===================================================");
-
-}
-
-
-void lsnet_init(void)
-{
-	ls_app_init();
-}
-
-
-/*    滑动平均滤波    */
-#define ADC_FILTER_SIZE 4
-static uint16_t adc_value_filtered[ADC_FILTER_SIZE] = {0};
-static uint8_t adc_value_filtered_index = 0;
-uint16_t adc_filter(uint16_t value)
-{
-	adc_value_filtered[adc_value_filtered_index] = value;
-	adc_value_filtered_index = (adc_value_filtered_index + 1) % ADC_FILTER_SIZE;
-	uint32_t sum = 0;
-	for(uint8_t i = 0; i < ADC_FILTER_SIZE; i++)
-	{
-		sum += adc_value_filtered[i];
-	}
-	return sum / ADC_FILTER_SIZE;
-}
-
-/*****************************************************/
 
 /* file end */

@@ -13,10 +13,11 @@
  *
  * 用法：
  *   1) MX_GPIO_Init() 已把所有 SCL/SDA/CS 配为推挽输出；
- *   2) 调用 AD5290_Init() 完成初始电平 + 6 路写入 0x80（中点）；
- *   3) 单通道：AD5290_SetCode() 或 AD5290_SetOhm()；
- *   4) 6 路并行：AD5290_SetAllCode() / AD5290_SetAllOhm()，
+ *   2) 调用 ad5290_init() 完成初始电平（CS 高、全 SCL 低；不写码值）；
+ *   3) 单通道：ad5290_set_code() 或 ad5290_set_ohm()；
+ *   4) 6 路并行：ad5290_set_all_code() / ad5290_set_all_ohm()，
  *      只拉一次 CS，6 路 SDA 同步移位，速度最快、各通道相位一致。
+ *   5) 首次码值由 param_init 经 ad5290_set_all_code 写入（取值来自 flash 或默认）。
  */
 
 #ifndef __AD5290_H
@@ -57,37 +58,37 @@ typedef enum {
  * @brief  初始化 IO 起始电平，并把 6 路 RDAC 写为中点 0x80。
  * @note   GPIO 模式已由 CubeMX 在 MX_GPIO_Init() 中配置，本函数不重复初始化。
  */
-void AD5290_Init(void);
+void ad5290_init(void);
 
 /**
  * @brief  设置单路 RDAC 码值（0~255）。
  */
-void AD5290_SetCode(ad5290_axis_e axis, ad5290_ch_e ch, uint8_t code);
+void ad5290_set_code(ad5290_axis_e axis, ad5290_ch_e ch, uint8_t code);
 
 /**
  * @brief  6 路并行写入 RDAC 码值（一次 CS 拉低，6 路 SDA 同步移位）。
  * @param  codes  长度 AD5290_TOTAL_NUM 的码值数组，
  *                索引 = axis * AD5290_CH_PER_AXIS + ch。
  */
-void AD5290_SetAllCode(const uint8_t codes[AD5290_TOTAL_NUM]);
+void ad5290_set_all_code(const uint8_t codes[AD5290_TOTAL_NUM]);
 
 /**
  * @brief  按目标阻值（欧姆）设置单路。
  * @note   按 RWB(D) ≈ (D/256) * R_AB 线性换算，忽略 wiper 电阻 Rw。
  *         越界自动钳位到 [0, 255]。
  */
-void AD5290_SetOhm(ad5290_axis_e axis, ad5290_ch_e ch, float ohm);
+void ad5290_set_ohm(ad5290_axis_e axis, ad5290_ch_e ch, float ohm);
 
 /**
  * @brief  6 路并行按欧姆设置。
  */
-void AD5290_SetAllOhm(const float ohms[AD5290_TOTAL_NUM]);
+void ad5290_set_all_ohm(const float ohms[AD5290_TOTAL_NUM]);
 
 /**
  * @brief  读取驱动内部影子寄存器中的最近一次写入码值。
  *         AD5290 自身只支持只写，故无法回读硬件。
  */
-uint8_t AD5290_GetCode(ad5290_axis_e axis, ad5290_ch_e ch);
+uint8_t ad5290_get_code(ad5290_axis_e axis, ad5290_ch_e ch);
 
 #ifdef __cplusplus
 }

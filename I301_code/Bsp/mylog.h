@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 /* 日志总开关 */
-#define LOG_ENABLE                1 
+#define LOG_ENABLE                1
 
 #define LOG_ENABLE_SYS            1
 #define LOG_ENABLE_NET            0

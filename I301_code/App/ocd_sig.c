@@ -10,7 +10,7 @@
  *      不填样本、不碰 out[]。
  *
  * 再配置清单(对原有配置的覆盖, 全部集中在 ocd_sig_init 内):
- *   ① DAC1_CH2 / DAC4_CH2 / OPAMP5 —— AD_DA_Init(task.c)中启动,
+ *   ① DAC1_CH2 / DAC4_CH2 / OPAMP5 —— ad_da_init(ad_da.c)中启动,
  *      本模块停止且后续不再使能: DAC 反馈功能已废弃(2026-08-27 用户
  *      确认, PA5/PA8 定死 PWM), 管线对这两通道的 DMA 写入保留但无害;
  *   ② 引脚复用 —— PA5 由 DAC1_OUT2 模拟直出、PA8 由 OPAMP5_VOUT
@@ -21,7 +21,7 @@
  *      CH1 增配 PWM1 输出; 原 TRGO=update 主模式保留(本就无受触发者,
  *      保留无害);
  *   ④ TIM2_IRQn —— MspInit 曾使能(优先级 0)但从未配中断源; 本模块
- *      明确不开更新中断, 并在 NVIC 中禁掉(规避 task.c TIM2 中断死
+ *      明确不开更新中断, 并在 NVIC 中禁掉(规避 ad_da.c TIM2 中断死
  *      代码旧账, README 警示);
  *   ⑤ TIM1 —— 原全工程未用, 本模块新建使用(手工句柄, .ioc 未登记),
  *      不覆盖任何既有外设。
@@ -34,7 +34,11 @@
  * 时序: 计时用 HAL_GetTick()(ISR 内读, 误差 ≤1ms), 同 ocd 惯例。 */
 
 #include "ocd_sig.h"
-#include "task.h"     /* ad_da_process_fn_t / AD_DA_CH_NUM / ad_da_process_fn */
+#include "ad_da.h"    /* ad_da_process_fn_t / AD_DA_CH_NUM / ad_da_process_fn */
+#include "dac.h"      /* HAL_DAC_Stop / hdac1(再配置①) */
+#include "opamp.h"    /* HAL_OPAMP_Stop / hopamp5(再配置①) */
+#include "tim.h"      /* htim2 / HAL_TIM_* PWM(再配置③⑤) */
+#include "gpio.h"     /* HAL_GPIO_WritePin 4053 选择脚 */
 
 #if OCD_SIG_ENABLE
 
@@ -44,7 +48,7 @@ static ocd_sig_axis_t     s_axis_x;     /* X 轴状态机, 检测源 ix = in[1] 
 static ocd_sig_axis_t     s_axis_y;     /* Y 轴状态机, 检测源 iy = in[3] */
 
 /* ---- 通路让路(再配置①): 覆盖式停用 ----
- * DAC1_CH2/DAC4_CH2/OPAMP5 三通道由 AD_DA_Init(task.c)启动, 此处停止,
+ * DAC1_CH2/DAC4_CH2/OPAMP5 三通道由 ad_da_init(ad_da.c)启动, 此处停止,
  * 且本特性后续不再使能——DAC 反馈功能废弃, PA5/PA8 定死 PWM 输出。
  * 停止后管线仍按 1MHz 节拍向这两路 DHR 写值(循环 DMA 未动), 写了无害。
  * IN 通道(DAC1_CH1/DAC4_CH1)与 OPAMP4 不在覆盖范围, 保持原样。 */
@@ -87,7 +91,7 @@ static void ocd_sig_gpio_af_init(void)
  *   原 TRGO=update 主模式保留不动(本就无人受触发, 保留无害)。
  * 与 TIM1 同配: TIM1 为 16 位定时器(ARR≤65535), 此为其可容纳的 1kHz 方案。
  * 再配置④: 更新中断明确不开; NVIC 禁 TIM2_IRQn —— MspInit 曾使能该
- * 中断号(优先级 0)但从未配源, 此处显式禁掉, 规避 task.c TIM2 中断
+ * 中断号(优先级 0)但从未配源, 此处显式禁掉, 规避 ad_da.c TIM2 中断
  * 死代码旧账(回调直写 DHR 与 TX DMA 竞争, README 警示)。
  * 注: HAL_TIM_PWM_Init 见 State=READY(MX_TIM2_Init 已置)不再回调
  * MspInit, 不会重新使能 TIM2_IRQn。 */

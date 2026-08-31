@@ -2,7 +2,7 @@
 #define __BSP_FLASH_H__
 
 #include "main.h"
-#include "task.h"
+#include "param.h"    /* flash_store_t */
 
 /* STM32G474RBT6 Flash 参数（128KB，单 Bank） */
 #define FLASH_PAGE_SIZE          0x800U          /* 2KB */
@@ -26,7 +26,7 @@ typedef struct
 } flash_param_t;
 #pragma pack()
 
-int  bsp_flash_save(const flash_store_t *store);
-int  bsp_flash_load(flash_store_t *store);
+int  bsp_flash_save(const flash_store_t *store); /* 保存参数(擦除+写入): 0 成功, -1 失败 */
+int  bsp_flash_load(flash_store_t *store);       /* 加载参数(magic+CRC 校验): 0 成功, -1 无有效数据 */
 
 #endif /* __BSP_FLASH_H__ */

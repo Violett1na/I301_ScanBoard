@@ -55,14 +55,16 @@ ADC→MCU→DAC 数字处理通路（处理后波形回注模拟伺服环路的�
 > （缺少 task.c、mylog.c、ad5290.c、bsp_flash.c、USB/、Proto/ 等全部源文件与
 > include 路径），直接用 Keil 打开必然构建失败。如需 UV4 命令行构建，可参照
 > `docs/superpowers/plans/2026-08-05-ad-da-processing-path.md` 记录的方法：
-> 临时按 eide.yml 补全文件清单与 include 路径（`../USB/inc;../Proto/Inc`），
+> 临时按 eide.yml 补全文件清单与 include 路径（`../USB/Inc;../Proto/Inc;../App;../Bsp`），
 > 编译器版本 V6.22→V6.23，构建后还原。
 
 ## 目录结构
 
 ```
 I301_code/
-  Core/             主程序与外设驱动（main/task/adc/dac/tim/opamp/ad5290/bsp_flash/mylog）
+  Core/             CubeMX 生成代码（main/外设初始化/it/msp，勿手改）
+  App/              应用层：管线 ad_da / 参数 param / 过流保护 ocd、ocd_sig
+  Bsp/              板级驱动与基础设施：ad5290 / bsp_flash / mylog
   Proto/            LS-XY 通信协议（与硬件无关，可复用）
   USB/              USB Device Bulk 收发（usbd_bulk 为业务收发入口）
   Drivers/          HAL / CMSIS（CubeMX 生成，勿手改）

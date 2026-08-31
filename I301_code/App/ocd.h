@@ -1,7 +1,7 @@
 #ifndef __OCD_H__
 #define __OCD_H__
 
-#include "task.h"
+#include "ad_da.h"
 
 /* ------------------------------------------------------------------
  * 软件过流检测 (OCD, Over-Current Detection)
@@ -9,7 +9,7 @@
  * 判据: ix(ch1) / iy(ch3) 出现连续 peg 码(==0 或 ==4095)超过
  *   OCD_TRIP_RUN 次即判定过流。连续计数可滤孤立采样毛刺。
  * 动作: 跳闸后 X/Y 轴 IN 通道(ch0/ch2)强制 2048 中点、FB 通道
- *   (ch1/ch3)强制 0(与 AD_DA_Init 上电预填安全态一致), 持续
+ *   (ch1/ch3)强制 0(与 ad_da_init 上电预填安全态一致), 持续
  *   OCD_HOLD_MS; 随后恢复跟随, 检测空白至距跳闸 OCD_CYCLE_MS
  *   才重新武装(1s 防抖盲期, 用户选定语义)。
  *
@@ -33,7 +33,7 @@
 #define OCD_STATE_HOLD  1U     /* 过流强制安全值中 */
 #define OCD_STATE_BLANK 2U     /* 已释放, 检测盲期内 */
 
-void     ocd_init(void);       /* AD_DA_Init 之后调用一次, 包装算法槽 */
+void     ocd_init(void);       /* ad_da_init 之后调用一次, 包装算法槽 */
 uint8_t  ocd_state(void);      /* 当前状态, 主循环观测用 */
 uint32_t ocd_trip_count(void); /* 累计跳闸次数 */
 

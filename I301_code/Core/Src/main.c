@@ -28,7 +28,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "task.h"
+#include "ad_da.h"
+#include "param.h"
 #include "ocd.h"
 #include "ocd_sig.h"
 #include "usb_device.h"
@@ -116,16 +117,17 @@ int main(void)
   param_init();
   /* 启动 AD-DA 处理通路: 须在 param_init 之后, 使 comp 偏置首拍生效。
      硬件约束: JP3 必须断开(或外部 IN± 不接), 见 spec §3.2 */
-  AD_DA_Init();
+  ad_da_init();
   ocd_init();   /* 软件过流检测(命令级干预): 受 OCD_ENABLE 宏门控(现=0, 空实现,
-                   过流只由 ocd_sig 发信令、图像零改变); 须在 AD_DA_Init 之后 */
+                   过流只由 ocd_sig 发信令、图像零改变); 须在 ad_da_init 之后 */
   ocd_sig_init();   /* 过流PWM信令: 最外层包装, 须在 ocd_init 之后 */
 
-  for (uint8_t i = 0; i < 6; i++)
-	{
-		LED_USB_TOGGLE();
-		HAL_Delay(150);
-	}
+  /* 启动指示: LED_USB 闪 6 次、150ms 间隔(release 启动序列约定) */
+  for (uint8_t i = 0; i < 6U; i++)
+  {
+    LED_USB_TOGGLE();
+    HAL_Delay(150);
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */

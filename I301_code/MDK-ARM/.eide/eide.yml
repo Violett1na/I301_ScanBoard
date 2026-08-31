@@ -27,18 +27,19 @@ virtualFolder:
                 - path: ../Core/Src/usart.c
                 - path: ../Core/Src/stm32g4xx_it.c
                 - path: ../Core/Src/stm32g4xx_hal_msp.c
-                - path: ../Core/Src/mylog.c
-                - path: ../Core/Src/ad5290.c
+                - path: ../Bsp/mylog.c
+                - path: ../Bsp/ad5290.c
                 - path: ../Core/Src/dac.c
                 - path: ../Core/Src/tim.c
                 - path: ../Core/Src/adc.c
                 - path: ../Core/Src/dma.c
                 - path: ../Core/Src/system_stm32g4xx.c
-                - path: ../Core/Src/task.c
+                - path: ../App/ad_da.c
+                - path: ../App/param.c
                 - path: ../Core/Src/opamp.c
-                - path: ../Core/Src/bsp_flash.c
-                - path: ../Core/Src/ocd.c
-                - path: ../Core/Src/ocd_sig.c
+                - path: ../Bsp/bsp_flash.c
+                - path: ../App/ocd.c
+                - path: ../App/ocd_sig.c
               folders: []
     - name: Drivers
       files: []
@@ -92,6 +93,8 @@ targets:
         - STM32G474xx
       incList:
         - ../Core/Inc
+        - ../App
+        - ../Bsp
         - ../Drivers/STM32G4xx_HAL_Driver/Inc
         - ../Drivers/STM32G4xx_HAL_Driver/Inc/Legacy
         - ../Drivers/CMSIS/Device/ST/STM32G4xx/Include

@@ -1,3 +1,6 @@
+/* bsp_flash.c —— Flash 末页参数存储（magic + CRC-16 双重校验）
+ * 上下游: param_init/协议保存句柄调用 save/load; 本层只做完整性校验,
+ * 数值范围一致性检查由调用方(param_init)承担。 */
 #include "bsp_flash.h"
 #include "mylog.h"
 #include <string.h>
@@ -42,7 +45,7 @@ static int flash_erase_param_page(void)
     status = HAL_FLASHEx_Erase(&erase_init, &page_error);
     if (status != HAL_OK)
     {
-        LOG_INFO("SYS  ", "flash erase failed, err: 0x%08X", (unsigned int)page_error);
+        LOG_SYS_ERROR("flash erase failed, err: 0x%08X", (unsigned int)page_error);
         return -1;
     }
     return 0;
@@ -69,7 +72,7 @@ static int flash_write_data(uint32_t addr, const uint8_t *data, uint16_t len)
 
         if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, addr + offset, dword) != HAL_OK)
         {
-            LOG_INFO("SYS  ", "flash write failed at 0x%08X", (unsigned int)(addr + offset));
+            LOG_SYS_ERROR("flash write failed at 0x%08X", (unsigned int)(addr + offset));
             return -1;
         }
     }
@@ -110,7 +113,7 @@ int bsp_flash_save(const flash_store_t *store)
 
     if (ret == 0)
     {
-        LOG_INFO("SYS  ", "flash save ok.");
+        LOG_SYS_INFO("flash save ok.");
     }
     return ret;
 }
@@ -132,7 +135,7 @@ int bsp_flash_load(flash_store_t *store)
     /* 校验魔术字 */
     if (p->magic != FLASH_PARAM_MAGIC)
     {
-        LOG_INFO("SYS  ", "flash param magic invalid.");
+        LOG_SYS_ERROR("flash param magic invalid.");
         return -1;
     }
 
@@ -140,12 +143,12 @@ int bsp_flash_load(flash_store_t *store)
     uint16_t crc = calc_crc16((const uint8_t *)p, offsetof(flash_param_t, crc));
     if (crc != p->crc)
     {
-        LOG_INFO("SYS  ", "flash param crc invalid.");
+        LOG_SYS_ERROR("flash param crc invalid.");
         return -1;
     }
 
     memcpy(store, &p->store, sizeof(flash_store_t));
 
-    LOG_INFO("SYS  ", "flash load ok.");
+    LOG_SYS_INFO("flash load ok.");
     return 0;
 }

@@ -20,7 +20,7 @@ static volatile uint32_t  s_trips;                 /* 累计跳闸次数 */
 static uint16_t           s_run;                   /* 当前连续 peg 长度, ISR 独享 */
 static uint32_t           s_t_trip;                /* 跳闸时刻 tick, ISR 独享 */
 
-/* 安全值填充: IN 中点 2048、FB 静息 0(与 AD_DA_Init 上电预填安全态一致) */
+/* 安全值填充: IN 中点 2048、FB 静息 0(与 ad_da_init 上电预填安全态一致) */
 static void ocd_fill_safe(uint16_t *const out[AD_DA_CH_NUM], uint16_t n)
 {
     uint16_t *p_inx = out[0];
@@ -101,7 +101,7 @@ static void ocd_process(const uint16_t *in[AD_DA_CH_NUM],
     }
 }
 
-/* 挂载: 包装算法槽。AD_DA_Init 之后调用一次 */
+/* 挂载: 包装算法槽。ad_da_init 之后调用一次 */
 void ocd_init(void)
 {
     s_inner  = ad_da_process_fn;

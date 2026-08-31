@@ -1,20 +1,12 @@
+/* ad_da.h —— AD-DA 实时管线接口(I301 振镜 XY 板)
+ * 职责: 1MHz AD-DA 处理通路声明(块长/算法槽/线性算法)、
+ *   监测快照类型(adc_value_t)。参数层见 param.h。
+ * 上下游: ad_da.c 实现; main.c/ocd/ocd_sig 引用;
+ *   管线节拍 = DMA HT/TC(ad_da.c)。 */
 #ifndef __TASK_H__
 #define __TASK_H__
 
 #include "main.h"
-#include "adc.h"
-#include "dac.h"
-#include "tim.h"
-#include "dac.h"
-#include "opamp.h"
-#include "ad5290.h"
-#include "gpio.h"
-#include "ls_proto_device_app.h"
-
-#define DAC_INX_SET(val)    (hdac1.Instance->DHR12R1 = (val))
-#define DAC_FBX_SET(val)    (hdac1.Instance->DHR12R2 = (val))
-#define DAC_INY_SET(val)    (hdac4.Instance->DHR12R1 = (val))
-#define DAC_FBY_SET(val)    (hdac4.Instance->DHR12R2 = (val))
 
 #pragma pack(1)
 typedef struct
@@ -32,50 +24,11 @@ typedef struct
 
     adc_value_fb_t fb;
 } adc_value_t;
-
-
-typedef struct
-{
-    uint8_t x1;
-    uint8_t x2;
-    uint8_t x3;
-    uint8_t y1;
-    uint8_t y2;
-    uint8_t y3;
-} radc_value_t;
-
-typedef struct
-{
-    int16_t x;
-    int16_t y;
-} comp_value_t;
-
-/* Flash 持久化存储总结构体，所有需要保存到 Flash 的参数统一放入此处 */
-typedef struct
-{
-    radc_value_t  radc;           /* 电位器码值 */
-    comp_value_t  comp;           /* 补偿值 */
-    
-} flash_store_t;
-
-
-
 #pragma pack()
 
+extern volatile adc_value_t adc_value;   /* 监测快照: ISR 每块写一次, 主循环/协议读 */
 
-
-extern volatile adc_value_t adc_value;
-
-extern radc_value_t radc_value;
-extern comp_value_t comp_value;
-extern flash_store_t flash_store;
-
-void AD_DA_Init(void);
-void ad5290_set_init(void);
-void param_init(void);
-void lsnet_init(void);
-
-uint16_t adc_filter(uint16_t value);
+void ad_da_init(void);       /* AD-DA 通路初始化: 校准/DAC 重配/预填/TX-RX DMA/时钟释放时序, 见 ad_da.c */
 
 /* --------------------------------------------------------------
  * AD-DA 处理通路（1MHz 逐样本线性处理、预留算法槽）
@@ -96,7 +49,9 @@ typedef void (*ad_da_process_fn_t)(const uint16_t *in[AD_DA_CH_NUM],
                                    uint16_t       *out[AD_DA_CH_NUM],
                                    uint16_t        n);
 
-extern ad_da_process_fn_t ad_da_process_fn;     /* 算法槽，默认指向 ad_da_process_linear */
+/* 算法槽: 主侧 init 期一次赋值(ocd/ocd_sig 包装), ISR 每拍读;
+ * volatile 显式跨界可见性(单对齐字写入原子)。 */
+extern volatile ad_da_process_fn_t ad_da_process_fn;
 
 /* 默认线性算法（IN/FB 通道分制，饱和钳位 0..4095）：
  * IN 通道 ch0/ch2：y = (4095 - x) + off（抵消调理反相，spec §1）

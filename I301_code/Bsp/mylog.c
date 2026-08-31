@@ -26,20 +26,23 @@ void log_output(log_level_e level,
                 const char *module,
                 const char *fmt, ...)
 {
-    if (level > LOG_LEVEL) return;
+    if (level > LOG_LEVEL)
+    {
+        return;
+    }
 
     va_list args;
 
 #if LOG_USE_TIMESTAMP
-{
-    uint32_t tick = log_get_tick();   // ms
+    {
+        uint32_t tick = log_get_tick();   /* ms */
 
-    uint32_t ms   = tick % 1000;
-    uint32_t sec  = (tick / 1000) % 60;
-    uint32_t min  = (tick / 60000);
+        uint32_t ms   = tick % 1000;
+        uint32_t sec  = (tick / 1000) % 60;
+        uint32_t min  = (tick / 60000);
 
-    printf("[%03u:%03u:%03u]", min, sec, ms);
-}
+        printf("[%03u:%03u:%03u]", min, sec, ms);
+    }
 #endif
 
     printf("[%s][%s] ", log_level_str[level], module);
@@ -70,7 +73,10 @@ void log_output_hex(log_level_e level,
                     const uint8_t *buf,
                     uint16_t len)
 {
-    if (level > LOG_LEVEL) return;
+    if (level > LOG_LEVEL)
+    {
+        return;
+    }
 
     if (buf == NULL)
     {

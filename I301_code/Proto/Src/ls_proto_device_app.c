@@ -1,8 +1,7 @@
 #include "ls_proto_device_app.h"
 #include "usbd_bulk.h"
 #include "ad5290.h"
-#include "bsp_flash.h"
-#include "task.h"
+#include "param.h"    /* radc/comp 经 param 接口访问(实体私有于 param.c) */
 
 
 /* -----------------------------------------------------------------------
@@ -36,21 +35,24 @@ static int app_ctrl_rdac(const ls_ctrl_rdac_t *rdac)
     {
         return -1;
     }
+
+    radc_value_t r = param_radc_get();
+
     if (rdac->xy == LS_RADC_X)
     {
         switch (rdac->ch)   
         {
             case LS_RADC_CH_1: 
-                radc_value.x1 = rdac->code; 
-                AD5290_SetCode(AD5290_AXIS_X, AD5290_CH_1, rdac->code);
+                r.x1 = rdac->code;
+                ad5290_set_code(AD5290_AXIS_X, AD5290_CH_1, rdac->code);
                 break;
             case LS_RADC_CH_2: 
-                radc_value.x2 = rdac->code; 
-                AD5290_SetCode(AD5290_AXIS_X, AD5290_CH_2, rdac->code);
+                r.x2 = rdac->code;
+                ad5290_set_code(AD5290_AXIS_X, AD5290_CH_2, rdac->code);
                 break;
             case LS_RADC_CH_3: 
-                radc_value.x3 = rdac->code; 
-                AD5290_SetCode(AD5290_AXIS_X, AD5290_CH_3, rdac->code);
+                r.x3 = rdac->code;
+                ad5290_set_code(AD5290_AXIS_X, AD5290_CH_3, rdac->code);
                 break;
             default:
                 return -1;
@@ -61,16 +63,16 @@ static int app_ctrl_rdac(const ls_ctrl_rdac_t *rdac)
         switch (rdac->ch)   
         {
             case LS_RADC_CH_1: 
-                radc_value.y1 = rdac->code; 
-                AD5290_SetCode(AD5290_AXIS_Y, AD5290_CH_1, rdac->code);
+                r.y1 = rdac->code;
+                ad5290_set_code(AD5290_AXIS_Y, AD5290_CH_1, rdac->code);
                 break;
             case LS_RADC_CH_2: 
-                radc_value.y2 = rdac->code; 
-                AD5290_SetCode(AD5290_AXIS_Y, AD5290_CH_2, rdac->code);
+                r.y2 = rdac->code;
+                ad5290_set_code(AD5290_AXIS_Y, AD5290_CH_2, rdac->code);
                 break;
             case LS_RADC_CH_3: 
-                radc_value.y3 = rdac->code; 
-                AD5290_SetCode(AD5290_AXIS_Y, AD5290_CH_3, rdac->code);
+                r.y3 = rdac->code;
+                ad5290_set_code(AD5290_AXIS_Y, AD5290_CH_3, rdac->code);
                 break;
             default:
                 return -1;
@@ -82,9 +84,10 @@ static int app_ctrl_rdac(const ls_ctrl_rdac_t *rdac)
         return -1;
     }
 
+    param_radc_set(&r);
     LOG_LSNET_INFO("ls - rdac %03d  %03d  %03d  %03d  %03d  %03d",
-                   radc_value.x1, radc_value.x2, radc_value.x3,
-                   radc_value.y1, radc_value.y2, radc_value.y3);
+                   r.x1, r.x2, r.x3,
+                   r.y1, r.y2, r.y3);
     return 0;
 }
 
@@ -100,16 +103,21 @@ static int app_ctrl_set_comp(const ls_ctrl_set_comp_t *comp)
         return -1;
     }
 
+    /* 范围校验收敛于 param setter(协议契约 [-2000, 2000]) */
     if (comp->xy == LS_RADC_X)
     {
-        /* TODO: 应用 X 通道补偿值 comp->value */
-        comp_value.x = comp->value;
+        if (param_set_comp_x(comp->value) != 0)
+        {
+            return -1;
+        }
         LOG_LSNET_INFO("ls - set comp X: %d", comp->value);
     }
     else if (comp->xy == LS_RADC_Y)
     {
-        /* TODO: 应用 Y 通道补偿值 comp->value */
-        comp_value.y = comp->value;
+        if (param_set_comp_y(comp->value) != 0)
+        {
+            return -1;
+        }
         LOG_LSNET_INFO("ls - set comp Y: %d", comp->value);
     }
     else
@@ -128,9 +136,7 @@ static int app_ctrl_set_comp(const ls_ctrl_set_comp_t *comp)
 static int app_ctrl_save_param(void)
 {
     LOG_LSNET_INFO("ls - save param.");
-    flash_store.radc = radc_value;
-    flash_store.comp = comp_value;
-    return bsp_flash_save(&flash_store);
+    return param_save();
 }
 
 static void app_get_device_info(ls_base_reply_t *reply)
@@ -142,14 +148,17 @@ static void app_get_device_info(ls_base_reply_t *reply)
     reply->device_id      = 0x1234;
     reply->device_version = 0x5678;
 
-    reply->r_x1           = radc_value.x1;
-    reply->r_x2           = radc_value.x2;
-    reply->r_x3           = radc_value.x3;
-    reply->r_y1           = radc_value.y1;
-    reply->r_y2           = radc_value.y2;
-    reply->r_y3           = radc_value.y3;
-    reply->comp_x         = comp_value.x;
-    reply->comp_y         = comp_value.y;
+    radc_value_t r                = param_radc_get();
+    const volatile comp_value_t *pc = param_comp();
+
+    reply->r_x1           = r.x1;
+    reply->r_x2           = r.x2;
+    reply->r_x3           = r.x3;
+    reply->r_y1           = r.y1;
+    reply->r_y2           = r.y2;
+    reply->r_y3           = r.y3;
+    reply->comp_x         = pc->x;
+    reply->comp_y         = pc->y;
 }
 
 /**
