@@ -1,32 +1,22 @@
+/* bsp_flash.h —— 通用参数持久化接口(DRV 层)
+ * 职责: 参数区的完整性语义(魔术字 + CRC-16 + 长度一致性); 擦/写/读
+ *   原语经 port_flash 契约, 平台无关。数据为不透明 blob, 本层不认识
+ *   应用类型(2026-09-02 重构消除原对 param.h 的层倒挂依赖)。
+ * 上下游: param.c 调用 save/load; 数值范围一致性检查由调用方承担。
+ * 布局说明: 存储总结构(魔术字+长度+数据+CRC)为本层私有, 见 .c。 */
 #ifndef __BSP_FLASH_H__
 #define __BSP_FLASH_H__
 
-#include "main.h"
-#include "param.h"    /* flash_store_t */
+#include <stdint.h>
 
-/* STM32G474RBT6 Flash 参数（128KB，单 Bank） */
-#define FLASH_PAGE_SIZE          0x800U          /* 2KB */
-#define FLASH_TOTAL_SIZE         0x20000U        /* 128KB */
+/* 持久化数据区最大长度(编译期约束, 调用方超限拒存;
+ * 调用方应以静态检查固定, 见 param.c) */
+#define BSP_FLASH_DATA_MAX  32U
 
-/* 使用最后一页（Page 63）作为参数存储区 */
-#define FLASH_PARAM_PAGE         63U
-#define FLASH_PARAM_BANK         FLASH_BANK_1
-#define FLASH_PARAM_ADDR         (FLASH_BASE + FLASH_TOTAL_SIZE - FLASH_PAGE_SIZE)
+/* 保存参数(擦除+写入, 魔术字+CRC): 0 成功, -1 失败 */
+int bsp_flash_save(const void *data, uint16_t len);
 
-/* 魔术字，用于校验存储数据有效性 */
-#define FLASH_PARAM_MAGIC        0x4C535059U     /* "LSPY" */
-
-#pragma pack(1)
-/* Flash 存储数据结构（内部使用，应用层无需关心） */
-typedef struct
-{
-    uint32_t       magic;          /* 魔术字校验 */
-    flash_store_t  store;          /* 用户数据 */
-    uint16_t       crc;            /* CRC-16 校验 */
-} flash_param_t;
-#pragma pack()
-
-int  bsp_flash_save(const flash_store_t *store); /* 保存参数(擦除+写入): 0 成功, -1 失败 */
-int  bsp_flash_load(flash_store_t *store);       /* 加载参数(magic+CRC 校验): 0 成功, -1 无有效数据 */
+/* 加载参数(魔术字+CRC+长度匹配校验): 0 成功, -1 无有效数据/长度不符 */
+int bsp_flash_load(void *data, uint16_t len);
 
 #endif /* __BSP_FLASH_H__ */

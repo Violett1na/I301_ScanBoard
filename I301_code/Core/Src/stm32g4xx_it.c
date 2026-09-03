@@ -300,7 +300,7 @@ void USB_LP_IRQHandler(void)
     HAL_PCD_IRQHandler(&hpcd_USB_FS);
 }
 
-/* TX DMA 中断: 循环模式 HT/TC 已在 ad_da_init 中屏蔽, 此处仅兜底传输错误(TE) */
+/* TX DMA 中断: 循环模式 HT/TC 已在 port_pipe_init 中屏蔽, 此处仅兜底传输错误(TE) */
 void DMA1_Channel5_IRQHandler(void)
 {
     HAL_DMA_IRQHandler(&hdma_dac1_ch1);
@@ -322,7 +322,7 @@ void DMA1_Channel8_IRQHandler(void)
 }
 
 /* DAC 欠载中断兜底: TIM6_DAC 线挂 DAC1&DAC3、TIM7_DAC 线挂 DAC2&DAC4(本工程用 DAC1/DAC4)。
-   HAL_DAC_Start_DMA 已使能 DMAUDRIE, NVIC 在 ad_da_init 中释放;
+   HAL_DAC_Start_DMA 已使能 DMAUDRIE, NVIC 在 port_pipe_init 中释放;
    此处清欠载标志(写1清零)并继续运行——输出保持设计本就容忍偶发丢拍,
    严禁因无 handler 落入 Default_Handler(B .)而整机死锁。 */
 void TIM6_DAC_IRQHandler(void)

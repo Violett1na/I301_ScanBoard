@@ -34,6 +34,5 @@ extern uint16_t bulk_trans_len;              // 发送数据长度
 extern uint8_t usb_connect;
 
 uint8_t USBD_BULK_SendLarge(uint8_t *buf, uint32_t len);
-void  USBD_BULK_Recv(void);
 
 #endif

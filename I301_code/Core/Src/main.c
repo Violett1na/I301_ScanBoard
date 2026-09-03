@@ -32,7 +32,10 @@
 #include "param.h"
 #include "ocd.h"
 #include "ocd_sig.h"
-#include "usb_device.h"
+#include "ls_proto_device_app.h"
+#include "port_pipe.h"
+#include "port_trans.h"
+#include "port_tick.h"
 
 /* USER CODE END Includes */
 
@@ -112,21 +115,26 @@ int main(void)
   /* USER CODE BEGIN 2 */
   LOG_SYS_INFO("===================================================");
   ad5290_set_init();
-  MX_USB_DEVICE_Init();
-  lsnet_init();
+  port_trans_init();   /* USB 设备栈初始化(原 MX_USB_DEVICE_Init 入契约) */
+  ls_app_init();       /* 协议回调注册 */
   param_init();
   /* 启动 AD-DA 处理通路: 须在 param_init 之后, 使 comp 偏置首拍生效。
+     算法槽须先于 port_pipe_init 装配(默认线性算法); OCD 包装在其后。
      硬件约束: JP3 必须断开(或外部 IN± 不接), 见 spec §3.2 */
-  ad_da_init();
+  ad_da_process_fn_set(ad_da_process_linear);
+  if (port_pipe_init() != 0)
+  {
+    Error_Handler();
+  }
   ocd_init();   /* 软件过流检测(命令级干预): 受 OCD_ENABLE 宏门控(现=0, 空实现,
-                   过流只由 ocd_sig 发信令、图像零改变); 须在 ad_da_init 之后 */
+                   过流只由 ocd_sig 发信令、图像零改变); 须在管线启动之后 */
   ocd_sig_init();   /* 过流PWM信令: 最外层包装, 须在 ocd_init 之后 */
 
   /* 启动指示: LED_USB 闪 6 次、150ms 间隔(release 启动序列约定) */
   for (uint8_t i = 0; i < 6U; i++)
   {
     LED_USB_TOGGLE();
-    HAL_Delay(150);
+    port_delay_ms(150);
   }
   /* USER CODE END 2 */
 
@@ -134,8 +142,8 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   LOG_SYS_INFO("Build Time: %s  %s", __DATE__, __TIME__);
   while (1)
-  { 
-    USBD_BULK_Recv();
+  {
+    ls_app_poll();   /* 传输接收成帧 + 协议分发(经 port_trans 契约) */
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

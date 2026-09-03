@@ -7,30 +7,43 @@
  *   - 时钟空闲低电平，SDI 在 SCLK 上升沿被采样（CPOL=0, CPHA=0 / SPI mode 0）；
  *   - CS 拉低期间移位，CS 上升沿锁存到 RDAC；
  *   - SCLK 最高 4 MHz，且 tCSS/tCSH/tCSW/tCH/tCL 都需要满足最小值。
- *   - 这里使用 DWT 周期计数器生成显式延时，避免 GPIO 翻转过快导致器件偶发不锁存。
+ *   - 显式延时经 port_delay_cycles（平台实现内用周期计数器生成），
+ *     避免引脚翻转过快导致器件偶发不锁存。
+ *
+ * 分层说明（2026-09-02 重构）：引脚操作全部经 port_gpio 契约（引脚表
+ *   用板型头 ID），时基经 port_tick 契约；原 GPIO 寄存器直写与厂商
+ *   引脚宏已移除。位带时序裕量不变（等效 SCLK <= 2 MHz）。
  */
 
 #include "ad5290.h"
+#include "port_gpio.h"
+#include "port_tick.h"
+#include "i301_ad_da.h"
+#include <stddef.h>   /* NULL */
 
 /* -------------------- 引脚映射 --------------------
- * 通道顺序与 main.h 原理图保持一致。
+ * 通道顺序与板型头保持一致。
  */
 typedef struct {
-    GPIO_TypeDef *scl_port;
-    uint16_t      scl_pin;
-    GPIO_TypeDef *sda_port;
-    uint16_t      sda_pin;
+    port_pin_t scl;
+    port_pin_t sda;
 } ad5290_pin_t;
 
 static const ad5290_pin_t s_pins[AD5290_TOTAL_NUM] = {
     /* X 轴 */
-    { X_SCL1_GPIO_Port, X_SCL1_Pin, X_SDA1_GPIO_Port, X_SDA1_Pin }, /* X-1, 10K  */
-    { X_SCL2_GPIO_Port, X_SCL2_Pin, X_SDA2_GPIO_Port, X_SDA2_Pin }, /* X-2, 10K  */
-    { X_SCL3_GPIO_Port, X_SCL3_Pin, X_SDA3_GPIO_Port, X_SDA3_Pin }, /* X-3, 100K */
+    { BOARD_PIN_X_SCL1, BOARD_PIN_X_SDA1 }, /* X-1, 10K  */
+    { BOARD_PIN_X_SCL2, BOARD_PIN_X_SDA2 }, /* X-2, 10K  */
+    { BOARD_PIN_X_SCL3, BOARD_PIN_X_SDA3 }, /* X-3, 100K */
     /* Y 轴 */
-    { Y_SCL1_GPIO_Port, Y_SCL1_Pin, Y_SDA1_GPIO_Port, Y_SDA1_Pin }, /* Y-1, 10K  */
-    { Y_SCL2_GPIO_Port, Y_SCL2_Pin, Y_SDA2_GPIO_Port, Y_SDA2_Pin }, /* Y-2, 10K  */
-    { Y_SCL3_GPIO_Port, Y_SCL3_Pin, Y_SDA3_GPIO_Port, Y_SDA3_Pin }, /* Y-3, 100K */
+    { BOARD_PIN_Y_SCL1, BOARD_PIN_Y_SDA1 }, /* Y-1, 10K  */
+    { BOARD_PIN_Y_SCL2, BOARD_PIN_Y_SDA2 }, /* Y-2, 10K  */
+    { BOARD_PIN_Y_SCL3, BOARD_PIN_Y_SDA3 }, /* Y-3, 100K */
+};
+
+/* 6 路 SCL 引脚集合: 并行写时一次同步翻转, 避免相位错位 */
+static const port_pin_t s_scl_all[AD5290_TOTAL_NUM] = {
+    BOARD_PIN_X_SCL1, BOARD_PIN_X_SCL2, BOARD_PIN_X_SCL3,
+    BOARD_PIN_Y_SCL1, BOARD_PIN_Y_SCL2, BOARD_PIN_Y_SCL3,
 };
 
 /* 各通道满量程电阻，用于欧姆 → 码值换算 */
@@ -41,53 +54,24 @@ static const float s_rab[AD5290_TOTAL_NUM] = {
 
 /* 影子寄存器：AD5290 不支持回读，缓存最近一次写入值供查询使用 */
 static uint8_t s_shadow[AD5290_TOTAL_NUM];
-static uint32_t s_timing_cycles = 1U;
-static uint8_t  s_dwt_ready     = 0U;
-
-/* -------------------- 引脚操作内联宏 --------------------
- * 直接走 BSRR，比 HAL_GPIO_WritePin 少一层判断，且为原子操作。
- */
-#define PIN_HIGH(port, pin)   ((port)->BSRR = (uint32_t)(pin))
-#define PIN_LOW(port, pin)    ((port)->BSRR = ((uint32_t)(pin) << 16U))
-
-#define CS_LOW()              PIN_LOW (CS_GPIO_Port, CS_Pin)
-#define CS_HIGH()             PIN_HIGH(CS_GPIO_Port, CS_Pin)
+static uint32_t s_timing_cycles = 1U;   /* 单次位带延时周期数(≈250ns) */
 
 /* -------------------- 工具函数 -------------------- */
 
 static void ad5290_timing_init(void)
 {
-    uint32_t hclk_hz = HAL_RCC_GetHCLKFreq();
+    uint32_t hclk_hz = port_sysclk_hz();
 
     /* 给 AD5290 留出裕量：高/低电平、CS 建立保持统一按 250 ns 控制，等效 SCLK <= 2 MHz */
     s_timing_cycles = (hclk_hz + 3999999U) / 4000000U;
     if (s_timing_cycles == 0U) {
         s_timing_cycles = 1U;
     }
-
-    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-    DWT->CTRL        |= DWT_CTRL_CYCCNTENA_Msk;
-    DWT->CYCCNT       = 0U;
-    s_dwt_ready       = ((DWT->CTRL & DWT_CTRL_CYCCNTENA_Msk) != 0U) ? 1U : 0U;
-}
-
-static inline void ad5290_delay_cycles(uint32_t cycles)
-{
-    uint32_t start = DWT->CYCCNT;
-
-    while ((uint32_t)(DWT->CYCCNT - start) < cycles) {
-    }
 }
 
 static inline void ad5290_bus_delay(void)
 {
-    if (s_dwt_ready != 0U) {
-        ad5290_delay_cycles(s_timing_cycles);
-    } else {
-        for (volatile uint32_t i = 0; i < 16U; ++i) {
-            __NOP();
-        }
-    }
+    port_delay_cycles(s_timing_cycles);
 }
 
 static inline uint8_t saturate_u8(int32_t v)
@@ -120,70 +104,58 @@ static uint8_t ohm_to_code(float ohm, float rab)
 static void ad5290_write_single(uint32_t idx, uint8_t code)
 {
     const ad5290_pin_t *p = &s_pins[idx];
+    int8_t i;
 
-    CS_LOW();
+    port_pin_write(BOARD_PIN_AD5290_CS, 0U);
     ad5290_bus_delay();
 
-    for (int8_t i = 7; i >= 0; --i) {
+    for (i = 7; i >= 0; --i) {
         /* 数据先放到 SDA */
-        if ((code >> i) & 0x01U) {
-            PIN_HIGH(p->sda_port, p->sda_pin);
-        } else {
-            PIN_LOW (p->sda_port, p->sda_pin);
-        }
+        port_pin_write(p->sda, ((code >> i) & 0x01U) ? 1U : 0U);
         ad5290_bus_delay();
         /* 上升沿锁存数据位 */
-        PIN_HIGH(p->scl_port, p->scl_pin);
+        port_pin_write(p->scl, 1U);
         ad5290_bus_delay();
-        PIN_LOW (p->scl_port, p->scl_pin);
+        port_pin_write(p->scl, 0U);
         ad5290_bus_delay();
     }
 
-    CS_HIGH();
+    port_pin_write(BOARD_PIN_AD5290_CS, 1U);
     ad5290_bus_delay();
     s_shadow[idx] = code;
 }
 
 /* -------------------- 6 路并行写入 --------------------
  * 同一根 CS、同步时钟，6 根 SDA 一起移位 8 bit。
- * 因为 6 路 SCL 也都需要翻转，这里把它们整体一起拉高/拉低。
- * GPIOC 上的 6 根 SCL 用 BSRR 一次性切换，避免相位错位。
+ * 6 路 SCL 经 port_pin_write_multi 一次性同步翻转（同端口实现合并为
+ * 单次寄存器写），避免相位错位。
  */
-
-/* 把 X/Y 6 路 SCL 的位掩码整理出来，便于一次写 BSRR */
-#define ALL_SCL_PINS  ( X_SCL1_Pin | X_SCL2_Pin | X_SCL3_Pin \
-                      | Y_SCL1_Pin | Y_SCL2_Pin | Y_SCL3_Pin )
-
 static void ad5290_write_all(const uint8_t codes[AD5290_TOTAL_NUM])
 {
-    /* 6 根 SCL 都在 GPIOC 上，可整体翻转 */
-    GPIO_TypeDef *scl_bus = GPIOC;
+    int8_t i;
+    uint32_t ch;
 
-    CS_LOW();
+    port_pin_write(BOARD_PIN_AD5290_CS, 0U);
     ad5290_bus_delay();
 
-    for (int8_t i = 7; i >= 0; --i) {
+    for (i = 7; i >= 0; --i) {
         /* 先各自摆好 SDA 位 */
-        for (uint32_t ch = 0; ch < AD5290_TOTAL_NUM; ++ch) {
+        for (ch = 0; ch < AD5290_TOTAL_NUM; ++ch) {
             const ad5290_pin_t *p = &s_pins[ch];
-            if ((codes[ch] >> i) & 0x01U) {
-                PIN_HIGH(p->sda_port, p->sda_pin);
-            } else {
-                PIN_LOW (p->sda_port, p->sda_pin);
-            }
+            port_pin_write(p->sda, ((codes[ch] >> i) & 0x01U) ? 1U : 0U);
         }
         ad5290_bus_delay();
         /* 6 路 SCL 同步上升沿 → 同步下降沿 */
-        scl_bus->BSRR = (uint32_t)ALL_SCL_PINS;             /* set */
+        port_pin_write_multi(s_scl_all, AD5290_TOTAL_NUM, 1U);
         ad5290_bus_delay();
-        scl_bus->BSRR = ((uint32_t)ALL_SCL_PINS) << 16U;    /* reset */
+        port_pin_write_multi(s_scl_all, AD5290_TOTAL_NUM, 0U);
         ad5290_bus_delay();
     }
 
-    CS_HIGH();
+    port_pin_write(BOARD_PIN_AD5290_CS, 1U);
     ad5290_bus_delay();
 
-    for (uint32_t ch = 0; ch < AD5290_TOTAL_NUM; ++ch) {
+    for (ch = 0; ch < AD5290_TOTAL_NUM; ++ch) {
         s_shadow[ch] = codes[ch];
     }
 }
@@ -192,11 +164,17 @@ static void ad5290_write_all(const uint8_t codes[AD5290_TOTAL_NUM])
 
 void ad5290_init(void)
 {
+    uint32_t ch;
+
     ad5290_timing_init();
 
     /* 起始空闲电平：CS 高，所有 SCL 低 */
-    CS_HIGH();
-    GPIOC->BSRR = ((uint32_t)ALL_SCL_PINS) << 16U;
+    port_pin_write(BOARD_PIN_AD5290_CS, 1U);
+    port_pin_write_multi(s_scl_all, AD5290_TOTAL_NUM, 0U);
+
+    for (ch = 0; ch < AD5290_TOTAL_NUM; ++ch) {
+        s_shadow[ch] = 0U;
+    }
 
     /* 码值写入由上层完成（首次为 param_init 经 SetAllCode），见头文件用法 5) */
 }
@@ -226,6 +204,8 @@ void ad5290_set_all_code(const uint8_t codes[AD5290_TOTAL_NUM])
 
 void ad5290_set_ohm(ad5290_axis_e axis, ad5290_ch_e ch, float ohm)
 {
+    uint32_t idx;
+
     if ((uint32_t)axis >= AD5290_AXIS_NUM)
     {
         return;
@@ -235,20 +215,21 @@ void ad5290_set_ohm(ad5290_axis_e axis, ad5290_ch_e ch, float ohm)
         return;
     }
 
-    uint32_t idx  = pin_index(axis, ch);
-    uint8_t  code = ohm_to_code(ohm, s_rab[idx]);
-    ad5290_write_single(idx, code);
+    idx = pin_index(axis, ch);
+    ad5290_write_single(idx, ohm_to_code(ohm, s_rab[idx]));
 }
 
 void ad5290_set_all_ohm(const float ohms[AD5290_TOTAL_NUM])
 {
+    uint8_t codes[AD5290_TOTAL_NUM];
+    uint32_t i;
+
     if (ohms == NULL)
     {
         return;
     }
 
-    uint8_t codes[AD5290_TOTAL_NUM];
-    for (uint32_t i = 0; i < AD5290_TOTAL_NUM; ++i) {
+    for (i = 0; i < AD5290_TOTAL_NUM; ++i) {
         codes[i] = ohm_to_code(ohms[i], s_rab[i]);
     }
     ad5290_write_all(codes);

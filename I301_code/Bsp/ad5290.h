@@ -1,23 +1,27 @@
 /**
  * @file    ad5290.h
- * @brief   AD5290 数字电位器驱动（GPIO 模拟 SPI，6 路共片选）
+ * @brief   AD5290 数字电位器驱动（位带模拟 SPI，6 路共片选）
  *
- * 硬件连接：
+ * 硬件连接（引脚经板型头 Board/i301_ad_da.h 的平台无关 ID 表达，
+ * 物理映射见平台实现）：
  *   X 轴 3 路 + Y 轴 3 路，共 6 个 AD5290。
- *   每路有独立的 SCL（CLK）与 SDA（MOSI），全部挂在 GPIOC。
- *   6 路共用一根 CS（PC6）：CS 拉低开始移位，CS 上升沿将 8 bit 数据
- *   一次性更新到 RDAC。
+ *   每路有独立的 SCL（CLK）与 SDA（MOSI），6 路共用一根 CS：
+ *   CS 拉低开始移位，CS 上升沿将 8 bit 数据一次性更新到 RDAC。
  *
  * 通道阻值：
  *   CH_1 / CH_2 = 10K，CH_3 = 100K（参见原理图）。
  *
+ * 分层说明（2026-09-02 重构）：引脚电平经 port_gpio 契约、延时经
+ *   port_tick 契约，本文件不再依赖厂商头文件。
+ *
  * 用法：
- *   1) MX_GPIO_Init() 已把所有 SCL/SDA/CS 配为推挽输出；
+ *   1) 引脚模式由平台初始化代码配为推挽输出，本驱动不重复初始化；
  *   2) 调用 ad5290_init() 完成初始电平（CS 高、全 SCL 低；不写码值）；
  *   3) 单通道：ad5290_set_code() 或 ad5290_set_ohm()；
  *   4) 6 路并行：ad5290_set_all_code() / ad5290_set_all_ohm()，
- *      只拉一次 CS，6 路 SDA 同步移位，速度最快、各通道相位一致。
- *   5) 首次码值由 param_init 经 ad5290_set_all_code 写入（取值来自 flash 或默认）。
+ *      只拉一次 CS，6 路 SDA 同步移位，速度最快、各通道相位一致；
+ *   5) 首次码值由 param_init 经 ad5290_set_all_code 写入（取值来自
+ *      flash 或默认）。
  */
 
 #ifndef __AD5290_H
@@ -27,7 +31,6 @@
 extern "C" {
 #endif
 
-#include "main.h"
 #include <stdint.h>
 
 /* 轴索引 */
@@ -55,8 +58,8 @@ typedef enum {
 #define AD5290_RAB_100K        100000.0f
 
 /**
- * @brief  初始化 IO 起始电平，并把 6 路 RDAC 写为中点 0x80。
- * @note   GPIO 模式已由 CubeMX 在 MX_GPIO_Init() 中配置，本函数不重复初始化。
+ * @brief  初始化 IO 起始电平（不写码值）。
+ * @note   GPIO 模式已由平台初始化代码配置，本函数不重复初始化。
  */
 void ad5290_init(void);
 

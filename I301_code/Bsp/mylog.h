@@ -1,12 +1,11 @@
 /* mylog.h —— 编译期裁剪日志框架接口(I301 振镜 XY 板)
  * 职责: 日志等级与模块开关宏(编译期裁剪)、log_output/log_output_hex
  *   核心接口、LOG_* 快捷宏。
- * 上下游: mylog.c 实现; 全仓引用; 时间戳经 log_get_tick
- *   (默认 HAL_GetTick, 可换 RTOS)。 */
+ * 上下游: mylog.c 实现; 全仓引用; 时间戳经 port_tick 契约,
+ *   输出经 port_console 契约(2026-09-02 重构去 HAL/printf 依赖)。 */
 #ifndef __MYLOG_H__
 #define __MYLOG_H__
 
-#include "main.h"
 #include <stdio.h>
 #include <stdint.h>
 
@@ -29,9 +28,6 @@
 
 /* 是否打印时间戳 */
 #define LOG_USE_TIMESTAMP   1
-
-/* 时间戳函数（HAL / RTOS 都可替换） */
-uint32_t log_get_tick(void);
 
 /* =================== 日志等级 =================== */
 typedef enum {
@@ -104,7 +100,7 @@ void log_output_hex(log_level_e level,
 #if LOG_ENABLE_DMX
 #define LOG_DMX_INFO(fmt, ...) LOG_INFO("DMX  ", fmt, ##__VA_ARGS__)
 #define LOG_DMX_DEBUG(fmt, ...) LOG_DEBUG("DMX  ", fmt, ##__VA_ARGS__)
-#define LOG_DMX_HEX(title, buf, len) LOG_HEX(LOG_LEVEL_INFO, "DMX  ", title, buf, len)
+#define LOG_DMX_HEX(title, buf, len) LOG_HEX(LOG_LEVEL_DEBUG, "DMX  ", title, buf, len)
 #else
 #define LOG_DMX_INFO(...)
 #define LOG_DMX_DEBUG(...)

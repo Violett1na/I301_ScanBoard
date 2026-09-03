@@ -60,18 +60,29 @@ ADC→MCU→DAC 数字处理通路（处理后波形回注模拟伺服环路的�
 
 ## 目录结构
 
+四层可移植架构（2026-09-02，见 `docs/superpowers/specs/2026-09-02-portable-layered-architecture-design.md`）：
+
 ```
 I301_code/
-  Core/             CubeMX 生成代码（main/外设初始化/it/msp，勿手改）
-  App/              应用层：管线 ad_da / 参数 param / 过流保护 ocd、ocd_sig
-  Bsp/              板级驱动与基础设施：ad5290 / bsp_flash / mylog
-  Proto/            LS-XY 通信协议（与硬件无关，可复用）
-  USB/              USB Device Bulk 收发（usbd_bulk 为业务收发入口）
-  Drivers/          HAL / CMSIS（CubeMX 生成，勿手改）
+  App/              APP 层：线性算法 ad_da_alg / 参数 param / 过流 ocd、ocd_sig /
+                    协议设备胶水 ls_proto_device_app（禁厂商头）
+  Proto/            APP 层：LS-XY 通信协议核心（与硬件无关，可复用于上位机）
+  Bsp/              DRV 层：ad5290 / bsp_flash / mylog（只依赖 Port 契约，禁厂商头）
+  Port/             PORT 层契约头：port_tick/gpio/flash/console/pipe/sig/trans/sys
+  Platform/
+    stm32g4/        PORT 实现（G4 专有；换芯片新建同级目录，含 chip_cfg.h）
+  Board/            板型配置头：i301_ad_da.h（引脚 ID / 通道数 / 功能组合）
+  Core/             厂商层：CubeMX 生成代码（main/外设初始化/it/msp，勿手改）
+  Drivers/          厂商层：HAL / CMSIS（勿手改）
+  USB/              厂商层：USB Device 库（port_trans 包装）
   MDK-ARM/          EIDE 工程配置（.eide/）与构建产物
 doc/                协议文档、原理图分析、测试数据（中文）
-docs/superpowers/   设计 spec 与实施计划（含 AD-DA 处理通路）
+docs/superpowers/   设计 spec 与实施计划
+tests/              宿主单测（WSL gcc）
+tools/              分层边界检查脚本（评审门）
 ```
+
+分层边界执行：`sh tools/check_layer_boundary.sh`（App/Bsp/Proto 不得出现厂商头与 HAL 符号）。
 
 ## 文档索引
 
@@ -82,6 +93,11 @@ docs/superpowers/   设计 spec 与实施计划（含 AD-DA 处理通路）
 
 ## 近期版本
 
+- **2026-09-02**：四层可移植分层架构落地（面向板B 纯模拟方案与后续多芯片适配）：
+  管线/信令/传输等硬件机制下沉 `Platform/stm32g4/`，8 个 PORT 契约 + 板型配置头
+  建立；App/Bsp/Proto 与厂商层完全解耦（边界脚本校验通过）；线性算法宿主单测
+  42 项通过；bsp_flash 泛化（存储布局变更，首次上电参数回退默认）；
+  `USBD_BULK_Recv` 成帧逻辑上移 `ls_app_poll`。**待编译与上板验证**
 - **2026-08-06**：AD-DA 处理通路上板验证通过并收尾：修复 FB 通道公式（原统一反相
   致静息 ≈2.2V，改 `y = x + off` 后静息 0V、有激励出波形，spec §9.7）；修复 X 轴反馈
   波形异常——4053 选择脚 PB3/PB4 漏配悬空，补配推挽默认低电平（spec §9.8）；诊断

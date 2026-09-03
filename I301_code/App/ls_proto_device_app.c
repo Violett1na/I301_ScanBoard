@@ -1,42 +1,49 @@
+/* ls_proto_device_app.c —— LIGHTSPACE-XY 协议设备侧胶水实现
+ * 2026-09-02 重构自 Proto/Src 迁入: 发送经 port_trans 契约,
+ * 复位经 port_sys 契约; 接收成帧判断(协议头/长度字段)由原
+ * USB 层 USBD_BULK_Recv 移入本层 ls_app_poll(协议知识归协议层,
+ * 传输层只交付字节流)。 */
 #include "ls_proto_device_app.h"
-#include "usbd_bulk.h"
+#include "ls_proto.h"        /* ls_device_pkt */
+#include "port_trans.h"
+#include "port_sys.h"
 #include "ad5290.h"
-#include "param.h"    /* radc/comp 经 param 接口访问(实体私有于 param.c) */
+#include "param.h"           /* radc/comp 经 param 接口访问(实体私有于 param.c) */
+#include "mylog.h"
+#include <string.h>
 
 
 /* -----------------------------------------------------------------------
  * 回调实现：获取设备基础信息
  * ----------------------------------------------------------------------- */
 
-/**
- * @brief 发送数据回调，底层通过USB BULK发送数据
- */
+/* 发送数据回调，底层经 port_trans(USB BULK)发送 */
 static void app_send_data(uint8_t *buf, uint16_t len)
 {
-    USBD_BULK_SendLarge(buf, len);
+    /* 忙即放弃本次, 与历史行为一致 */
+    (void)port_trans_send(buf, len);
 }
 
 static void app_reset_device(void)
 {
     LOG_LSNET_INFO("ls - reset device.");
-    __NVIC_SystemReset();
-
+    port_sys_reset();
 }
 
-/**
- * @brief 控制数字电位器回调：把协议字段映射到 AD5290 驱动接口
- *        协议侧：xy 0x01/0x02 → X/Y；ch 0x01/0x02/0x03 → 通道 1/2/3
- *        驱动侧：ad5290_axis_e (0/1)，ad5290_ch_e (0/1/2)
- * @return 0 成功，-1 参数非法
- */
+/* 控制数字电位器回调：把协议字段映射到 AD5290 驱动接口
+ * 协议侧：xy 0x01/0x02 → X/Y；ch 0x01/0x02/0x03 → 通道 1/2/3
+ * 驱动侧：ad5290_axis_e (0/1)，ad5290_ch_e (0/1/2)
+ * 返回: 0 成功，-1 参数非法 */
 static int app_ctrl_rdac(const ls_ctrl_rdac_t *rdac)
 {
+    radc_value_t r;
+
     if (rdac == NULL)
     {
         return -1;
     }
 
-    radc_value_t r = param_radc_get();
+    r = param_radc_get();
 
     if (rdac->xy == LS_RADC_X)
     {
@@ -91,11 +98,9 @@ static int app_ctrl_rdac(const ls_ctrl_rdac_t *rdac)
     return 0;
 }
 
-/**
- * @brief 设置补偿值回调：将协议下发的补偿值应用到对应通道
- *        协议侧：xy 0x01/0x02 → X/Y；value 范围 [-2000, 2000]
- * @return 0 成功，-1 参数非法
- */
+/* 设置补偿值回调：将协议下发的补偿值应用到对应通道
+ * 协议侧：xy 0x01/0x02 → X/Y；value 范围 [-2000, 2000]
+ * 返回: 0 成功，-1 参数非法 */
 static int app_ctrl_set_comp(const ls_ctrl_set_comp_t *comp)
 {
     if (comp == NULL)
@@ -129,10 +134,8 @@ static int app_ctrl_set_comp(const ls_ctrl_set_comp_t *comp)
     return 0;
 }
 
-/**
- * @brief 参数保存回调：将当前参数写入持久化存储
- * @return 0 成功，-1 失败
- */
+/* 参数保存回调：将当前参数写入持久化存储
+ * 返回: 0 成功，-1 失败 */
 static int app_ctrl_save_param(void)
 {
     LOG_LSNET_INFO("ls - save param.");
@@ -141,6 +144,9 @@ static int app_ctrl_save_param(void)
 
 static void app_get_device_info(ls_base_reply_t *reply)
 {
+    radc_value_t r;
+    const volatile comp_value_t *pc;
+
     if (reply == NULL)
     {
         return;
@@ -148,8 +154,8 @@ static void app_get_device_info(ls_base_reply_t *reply)
     reply->device_id      = 0x1234;
     reply->device_version = 0x5678;
 
-    radc_value_t r                = param_radc_get();
-    const volatile comp_value_t *pc = param_comp();
+    r  = param_radc_get();
+    pc = param_comp();
 
     reply->r_x1           = r.x1;
     reply->r_x2           = r.x2;
@@ -161,10 +167,7 @@ static void app_get_device_info(ls_base_reply_t *reply)
     reply->comp_y         = pc->y;
 }
 
-/**
- * @brief 初始化 ls proto 应用层，注册所有回调
- *
- */
+/* 初始化协议应用层，注册所有回调 */
 void ls_app_init(void)
 {
     static const ls_receive_callbacks_t r_cbs = {
@@ -182,4 +185,35 @@ void ls_app_init(void)
     ls_receiver_init_callbacks(&r_cbs);
     ls_trans_init_callbacks(&t_cbs);
     LOG_LSNET_INFO("ls - callbacks initialized.");
+}
+
+/* 主循环接收处理: 传输层字节流 → 成帧判断 → 协议分发。
+ * 成帧语义承自原 USB 层 USBD_BULK_Recv(逐字节迁移, 逻辑不变):
+ * 头部字符串不匹配 = 坏帧整体丢弃; 累积长度 == 包内长度字段 = 整帧就绪。 */
+void ls_app_poll(void)
+{
+    const uint8_t *buf = NULL;
+    uint16_t len = port_trans_rx_peek(&buf);
+    uint16_t flen;
+
+    port_trans_poll();
+
+    if ((buf == NULL) || (len < LS_DATA_BASE_LEN))
+    {
+        return;
+    }
+
+    if (memcmp(buf, LS_HEADER_STR, LS_HEADER_LEN) != 0)
+    {
+        LOG_SYS_ERROR("recv head error.");
+        port_trans_rx_consume(len);
+        return;
+    }
+
+    flen = (uint16_t)(((uint16_t)buf[13] << 8) | buf[14]);
+    if (len == flen)
+    {
+        ls_parse(&ls_device_pkt, (uint8_t *)buf, flen);
+        port_trans_rx_consume(flen);
+    }
 }

@@ -34,13 +34,25 @@ virtualFolder:
                 - path: ../Core/Src/adc.c
                 - path: ../Core/Src/dma.c
                 - path: ../Core/Src/system_stm32g4xx.c
-                - path: ../App/ad_da.c
+                - path: ../App/ad_da_alg.c
                 - path: ../App/param.c
                 - path: ../Core/Src/opamp.c
                 - path: ../Bsp/bsp_flash.c
                 - path: ../App/ocd.c
                 - path: ../App/ocd_sig.c
+                - path: ../App/ls_proto_device_app.c
               folders: []
+        - name: Platform
+          files:
+            - path: ../Platform/stm32g4/port_tick_g4.c
+            - path: ../Platform/stm32g4/port_gpio_g4.c
+            - path: ../Platform/stm32g4/port_flash_g4.c
+            - path: ../Platform/stm32g4/port_console_g4.c
+            - path: ../Platform/stm32g4/port_pipe_g4.c
+            - path: ../Platform/stm32g4/port_sig_g4.c
+            - path: ../Platform/stm32g4/port_trans_g4.c
+            - path: ../Platform/stm32g4/port_sys_g4.c
+          folders: []
     - name: Drivers
       files: []
       folders:
@@ -95,6 +107,9 @@ targets:
         - ../Core/Inc
         - ../App
         - ../Bsp
+        - ../Port
+        - ../Board
+        - ../Platform/stm32g4
         - ../Drivers/STM32G4xx_HAL_Driver/Inc
         - ../Drivers/STM32G4xx_HAL_Driver/Inc/Legacy
         - ../Drivers/CMSIS/Device/ST/STM32G4xx/Include
@@ -198,6 +213,7 @@ targets:
               mem:
                 size: "0x20000"
                 startAddr: "0x8000000"
+              noInit: false
               tag: IROM
             - id: 2
               isChecked: false
@@ -205,6 +221,7 @@ targets:
               mem:
                 size: "0x0"
                 startAddr: "0x0"
+              noInit: false
               tag: IROM
         useCustomScatterFile: true
     uploadConfigMap:

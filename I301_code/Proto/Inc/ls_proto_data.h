@@ -5,7 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "mylog.h"
+/* 2026-09-02 重构: 摘除 mylog.h 依赖(曾把 HAL 头链带入协议核心)。
+ * LS_LOG_ENABLE=1 时需由使用方自备日志宏环境。 */
 
 #define LS_ENDIAN_ENABLE    1                  /* 发送端大小端互转使能（默认大端则关闭） */
 #define LS_RX_ENDIAN_ENABLE 1                  /* 接收端大小端互转使能（默认大端则关闭） */

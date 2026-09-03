@@ -1,4 +1,5 @@
 #include "ocd.h"
+#include "port_tick.h"
 
 /* ------------------------------------------------------------------
  * 软件过流检测实现(时序语义: 200ms 强制 + 1s 盲期, 用户选定)
@@ -9,18 +10,19 @@
  *   BLANK: 恢复跟随, 检测关闭防抖, 距跳闸满 OCD_CYCLE_MS 重新武装。
  * 全部逻辑跑在 1MHz 管线 ISR(算法槽包装), 每半块 16 样本, 开销为
  * 每样本几次整数比较, 远裕于 16µs 死线。
+ * 2026-09-02 重构: 时基改经 port_tick 契约, 槽位经 set/get 接口。
  * ------------------------------------------------------------------ */
 
 #if OCD_ENABLE
 
 /* ---- 模块内部状态 ---- */
-static ad_da_process_fn_t s_inner;                 /* 被包装的内层算法 */
+static ad_da_process_fn_t s_inner;                   /* 被包装的内层算法 */
 static volatile uint8_t   s_state = OCD_STATE_ARMED; /* 状态机, 主循环经接口读 */
-static volatile uint32_t  s_trips;                 /* 累计跳闸次数 */
-static uint16_t           s_run;                   /* 当前连续 peg 长度, ISR 独享 */
-static uint32_t           s_t_trip;                /* 跳闸时刻 tick, ISR 独享 */
+static volatile uint32_t  s_trips;                   /* 累计跳闸次数 */
+static uint16_t           s_run;                     /* 当前连续 peg 长度, ISR 独享 */
+static uint32_t           s_t_trip;                  /* 跳闸时刻 tick, ISR 独享 */
 
-/* 安全值填充: IN 中点 2048、FB 静息 0(与 ad_da_init 上电预填安全态一致) */
+/* 安全值填充: IN 中点 2048、FB 静息 0(与管线上电预填安全态一致) */
 static void ocd_fill_safe(uint16_t *const out[AD_DA_CH_NUM], uint16_t n)
 {
     uint16_t *p_inx = out[0];
@@ -42,7 +44,7 @@ static void ocd_process(const uint16_t *in[AD_DA_CH_NUM],
                         uint16_t       *out[AD_DA_CH_NUM],
                         uint16_t        n)
 {
-    uint32_t now = HAL_GetTick();
+    uint32_t now = port_tick_ms();
 
     /* 按时长推进状态: HOLD 满 200ms 释放跟随, BLANK 满 1s 重新武装 */
     if (s_state == OCD_STATE_HOLD)
@@ -66,8 +68,9 @@ static void ocd_process(const uint16_t *in[AD_DA_CH_NUM],
     {
         const uint16_t *pix = in[1];
         const uint16_t *piy = in[3];
+        uint16_t        i;
 
-        for (uint16_t i = 0U; i < n; i++)
+        for (i = 0U; i < n; i++)
         {
             uint16_t a = pix[i];
             uint16_t b = piy[i];
@@ -101,15 +104,15 @@ static void ocd_process(const uint16_t *in[AD_DA_CH_NUM],
     }
 }
 
-/* 挂载: 包装算法槽。ad_da_init 之后调用一次 */
+/* 挂载: 包装算法槽。port_pipe_init 之后调用一次 */
 void ocd_init(void)
 {
-    s_inner  = ad_da_process_fn;
+    s_inner  = ad_da_process_fn_get();
     s_state  = OCD_STATE_ARMED;
     s_run    = 0U;
     s_t_trip = 0U;
     s_trips  = 0U;
-    ad_da_process_fn = ocd_process;   /* 最后赋值: 此后管线经包装层 */
+    ad_da_process_fn_set(ocd_process);   /* 最后赋值: 此后管线经包装层 */
 }
 
 uint8_t ocd_state(void)

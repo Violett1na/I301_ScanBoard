@@ -2,12 +2,13 @@
 #define __OCD_SIG_H__
 
 /* ------------------------------------------------------------------
- * 过流 PWM 信令 —— 纯状态机单元(无副作用依赖, 宿主可测, 测试见 tests/ocd_sig)
+ * 过流 PWM 信令 —— 纯状态机单元(无副作用依赖, 宿主可测, 测试见 tests/)
  * spec: docs/superpowers/specs/2026-08-27-ocd-pwm-signaling-design.md
  *
  * 职责: 按轴独立检测过流(连续 peg), 给出跳闸/释放事件; 固件层(ocd_sig.c)
- *   据此切 4053 选择脚, 把该轴 FB 出口从模拟直通切到常开 PWM(1kHz/50%/3V3)
- *   报总控板切激光。本单元不做波形、不碰输出缓冲。
+ *   据此经 port_sig 契约切 4053 选择脚, 把该轴 FB 出口从模拟直通切到
+ *   常开方波报总控板切激光。本单元不做波形、不碰输出缓冲;
+ *   方波建立/引脚复用等硬件动作属 port_sig 契约(实现见平台层)。
  *
  * 判据(同 ocd.c 语义, 按轴独立):
  *   peg = 样本==0 或 ==4095(撞量程轨);
@@ -21,17 +22,14 @@
 #define OCD_SIG_ENABLE      1U            /* 总开关: 0 = 编译期整体摘除(空实现回退) */
 #define OCD_SIG_TRIP_RUN    8U            /* 跳闸阈值: 连续 peg >8(即第 9 个)跳闸 */
 #define OCD_SIG_RELEASE_MS  1000U         /* 防抖释放窗: 无 peg 稳定满 1s 回模拟直通 */
-#define OCD_SIG_PSC         (170U - 1U)   /* 170MHz/170 = 1MHz 计数时钟(两路同配) */
-#define OCD_SIG_ARR         (1000U - 1U)  /* 1MHz/1000 = 1kHz; TIM1 为 16 位, 此为其可容纳方案 */
-#define OCD_SIG_CCR         500U          /* 500/1000 = 50% 占空 */
 
 /* ---- peg 判据(复用 ocd 语义: 撞量程轨) ---- */
 #define OCD_SIG_IS_PEG(s)   (((s) == 0U) || ((s) == 4095U))
 
 /* ---- ocd_sig_feed 返回事件 ---- */
 #define OCD_SIG_EV_NONE     0U        /* 无状态迁移 */
-#define OCD_SIG_EV_TRIP     1U        /* OFF->ON: 应拉高本轴 4053 选择脚 */
-#define OCD_SIG_EV_RELEASE  2U        /* ON->OFF: 应拉低本轴 4053 选择脚 */
+#define OCD_SIG_EV_TRIP     1U        /* OFF->ON: 该轴 4053 切信令方波 */
+#define OCD_SIG_EV_RELEASE  2U        /* ON->OFF: 该轴 4053 回模拟直通 */
 
 /* ---- 按轴独立状态机 ---- */
 typedef struct
@@ -53,7 +51,7 @@ static inline void ocd_sig_axis_init(ocd_sig_axis_t *ax)
 }
 
 /* 喂入一个样本, 返回事件。
- * now_ms = HAL_GetTick()(ISR 内读, 误差 ≤1ms, 对 1s 窗口无影响)。 */
+ * now_ms = port_tick_ms()(ISR 内读, 误差 ≤1ms, 对 1s 窗口无影响)。 */
 static inline uint8_t ocd_sig_feed(ocd_sig_axis_t *ax, uint16_t sample, uint32_t now_ms)
 {
     uint8_t peg = OCD_SIG_IS_PEG(sample) ? 1U : 0U;

@@ -1,6 +1,5 @@
 #include "usbd_bulk.h"
 #include "usbd_ctlreq.h"
-#include "ls_proto_receive.h"
 
 
 
@@ -291,28 +290,7 @@ uint8_t USBD_BULK_SendLarge(uint8_t *buf, uint32_t len)
     return USBD_OK;
 }
 
-void  USBD_BULK_Recv(void)
-{
-    if (bulk_rx_len < LS_DATA_BASE_LEN) {
-        return;
-    }
-
-    if (memcmp(bulk_rx_buf, LS_HEADER_STR, LS_HEADER_LEN) != 0)
-    {
-        LOG_SYS_ERROR("usb bulk recv head error.");
-        bulk_rx_len = 0;
-        return;
-    }
-    uint16_t length = bulk_rx_buf[13] << 8 | bulk_rx_buf[14];
-    if (bulk_rx_len == length)
-    {
-        //处理数据
-        // LOG_SYS_INFO("usb bulk recv %d bytes", length);
-        // LOG_SYS_HEX("usb bulk recv data", bulk_rx_buf, length);
-        ls_parse(&ls_device_pkt, bulk_rx_buf, length);
-        //移除数据
-        bulk_rx_len = 0;        
-    }
-
-}
+/* 2026-09-02 分层重构: 成帧判断与协议分发(原 USBD_BULK_Recv)上移
+ * APP 层 ls_app_poll(经 port_trans 契约取累积缓冲); 本文件只保留
+ * USB 类驱动与字节累积, 不再引用协议层符号。 */
 

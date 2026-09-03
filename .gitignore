@@ -36,4 +36,7 @@ doc/测试数据/pic/
 I301_code/MDK-ARM/build_cli_log.txt
 I301_code/MDK-ARM/build_log.txt
 I301_code/MDK-ARM/.vscode/
+# 宿主单测编译产物 (2026-09-03)
+tests/*/test_*
+!tests/*/test_*.c
 

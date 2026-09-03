@@ -3,12 +3,18 @@
  *   (param_init 加载 / setter 协议写), 范围校验收敛于 comp_set_checked
  *   与 setter; ISR 经 param_comp() 只读指针直读。
  * 上下游: main.c 按启动序列调用; 协议层经 param.h 接口读写;
- *   ISR 只读 comp(见 ad_da.c 线性算法)。 */
+ *   ISR 只读 comp(见 ad_da_alg.c 线性算法)。
+ * 2026-09-02 重构: 去 HAL(延时经 port_tick); bsp_flash 改不透明
+ *   blob 接口; 协议栈初始化包装(lsnet_init)移回 main(归传输装配)。 */
 #include "param.h"
-#include "main.h"
 #include "ad5290.h"
 #include "bsp_flash.h"
-#include "ls_proto_device_app.h"
+#include "port_tick.h"
+#include "mylog.h"
+
+/* 编译期尺寸约束: 持久化结构不得超出存储层数据区(规范 10-10) */
+typedef char param_flash_fit_check[
+    (sizeof(flash_store_t) <= BSP_FLASH_DATA_MAX) ? 1 : -1];
 
 static radc_value_t s_radc;          /* 电位器码值: param_init/协议写(主循环域) */
 static volatile comp_value_t s_comp; /* 偏置补偿: 主循环写、ISR 读; 对齐 16 位加载天然原子, 不加锁 */
@@ -17,7 +23,7 @@ static volatile comp_value_t s_comp; /* 偏置补偿: 主循环写、ISR 读; �
 void ad5290_set_init(void)
 {
     ad5290_init();
-    HAL_Delay(10);
+    port_delay_ms(10);
 }
 
 /* 默认电位器码值(承自原仓库, 电气依据待补) */
@@ -78,7 +84,7 @@ int param_save(void)
 
     store.radc = s_radc;
     store.comp = s_comp;
-    return bsp_flash_save(&store);
+    return bsp_flash_save(&store, sizeof(store));
 }
 
 /* comp 一致性写入: 任一越界整体回退默认, 防非法偏置进入 ISR(规范 10-2) */
@@ -104,7 +110,7 @@ void param_init(void)
 {
     flash_store_t store;
 
-    if (bsp_flash_load(&store) == 0)
+    if (bsp_flash_load(&store, sizeof(store)) == 0)
     {
         s_radc = store.radc;
         comp_set_checked(store.comp.x, store.comp.y);
@@ -129,12 +135,6 @@ void param_init(void)
                  s_radc.x1, s_radc.x2, s_radc.x3, s_radc.y1, s_radc.y2, s_radc.y3);
     LOG_SYS_INFO("comp: x = %04d, y = %04d", s_comp.x, s_comp.y);
     LOG_SYS_INFO("===================================================");
-}
-
-/* USB 协议栈初始化包装(main.c 启动序列调用) */
-void lsnet_init(void)
-{
-    ls_app_init();
 }
 
 /* file end */

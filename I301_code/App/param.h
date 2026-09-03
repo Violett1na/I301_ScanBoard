@@ -5,7 +5,7 @@
  *   写方单点收敛、范围校验单点收敛; ISR 经 param_comp() 只读指针
  *   直读字段, 零开销。
  * 上下游: main.c 按启动序列调用初始化; 协议层经接口读写参数;
- *   bsp_flash 按 flash_store_t 持久化(param_save 内部组装)。 */
+ *   bsp_flash 按不透明 blob 持久化(param_save 内部组装)。 */
 #ifndef __PARAM_H__
 #define __PARAM_H__
 
@@ -32,7 +32,8 @@ typedef struct
 #define COMP_VALUE_MIN  (-2000)
 #define COMP_VALUE_MAX  2000
 
-/* Flash 持久化存储总结构体，所有需要保存到 Flash 的参数统一放入此处 */
+/* Flash 持久化存储总结构体，所有需要保存到 Flash 的参数统一放入此处
+ * (经 bsp_flash 不透明 blob 接口存取, 存储层不认识本类型) */
 typedef struct
 {
     radc_value_t  radc;           /* 电位器码值 */
@@ -50,6 +51,5 @@ int param_save(void);                          /* 快照当前参数并持久化
 
 void ad5290_set_init(void);  /* AD5290 电位器初始化包装(main.c 启动序列调用) */
 void param_init(void);       /* flash 参数加载(违例回退默认+范围一致性检查)并写电位器 */
-void lsnet_init(void);       /* USB 协议栈初始化包装 */
 
 #endif /* __PARAM_H__ */
