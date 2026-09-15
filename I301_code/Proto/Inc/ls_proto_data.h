@@ -42,13 +42,21 @@ typedef enum
     LS_BASE_QUERY             = 0x0101,
     LS_BASE_REPLY             = 0x0102,
     LS_BASE_RESET_DEVICE      = 0x0103,
+    LS_BASE_REPLY_ALL         = 0x0104,    /* 全量回复: 三套配置 + 工况 */
 
     LS_CTRL_REPLY             = 0x0301,
     LS_CTRL_RDAC              = 0x0302,    /* 控制数字电位器 */
     LS_CTRL_SET_COMP          = 0x0303,    /* 设置补偿值 */
     LS_CTRL_SAVE_PARAM        = 0x0304,    /* 参数保存 */
+    LS_CTRL_SET_PROFILE       = 0x0305,    /* 整包写一套配置 */
+    LS_CTRL_GET_ALL           = 0x0306,    /* 请求全量回读 */
+    LS_CTRL_FORCE_PROFILE     = 0x0307,    /* 强制套 / 保活 / 解除 */
 
 } ls_type_e;
+
+/* 配置套: 三工况, 语义见 spec §3.1 */
+#define LS_PROFILE_NUM   3
+#define LS_PROFILE_NONE  0xFF   /* 强制解除(0x0307 专用) */
 
 typedef enum
 {
@@ -120,6 +128,51 @@ typedef struct
     uint8_t  xy;
     int16_t  value;
 } ls_ctrl_set_comp_t;
+
+/* 一套配置(0x0305 写、0x0104 读共用, 10B)
+ * 分层: 协议层自定义, 不依赖 App 层 param.h 类型(规范 13-3);
+ *   字节布局与 param_profile_t 一致, 映射在 device_app 层做。
+ *   radc 单字节无需转换; comp_x/comp_y 需大小端转换。 */
+typedef struct
+{
+    uint8_t  radc[6];      /* X1 X2 X3 Y1 Y2 Y3, 各 0~255 */
+    int16_t  comp_x;       /* X 轴补偿值, [-2000, 2000] */
+    int16_t  comp_y;       /* Y 轴补偿值, [-2000, 2000] */
+} ls_profile_t;
+
+/* 控制类: 整包写一套(命令字 0x0305)
+ *   profile : 0~2 目标套; 越界拒收 */
+typedef struct
+{
+    uint8_t      profile;
+    ls_profile_t data;
+} ls_ctrl_set_profile_t;
+
+/* 控制类: 请求全量回读(命令字 0x0306)
+ *   req : 填 0xFF */
+typedef struct
+{
+    uint8_t req;
+} ls_ctrl_get_all_t;
+
+/* 控制类: 强制套(命令字 0x0307), 同时用作保活帧
+ *   profile : 0~2 强制到该套; 0xFF 解除强制 */
+typedef struct
+{
+    uint8_t profile;
+} ls_ctrl_force_t;
+
+/* 基础类: 全量回复(命令字 0x0104, 36B)
+ *   active_profile : 设备当前生效套(自主判定结果)
+ *   forced_profile : 强制套; 0xFF = 未强制 */
+typedef struct
+{
+    uint16_t     device_id;
+    uint16_t     device_version;
+    uint8_t      active_profile;
+    uint8_t      forced_profile;
+    ls_profile_t profiles[LS_PROFILE_NUM];
+} ls_all_reply_t;
 
 
 #pragma pack()

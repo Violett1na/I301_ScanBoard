@@ -10,6 +10,7 @@
  *   4. 大小端互转 ls_swap_endian_16。 */
 #include <stdio.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "ls_proto.h"
@@ -142,10 +143,35 @@ static void test_unpack_errors(void)
     CHECK_EQ(ls_unpack(buf, len, &out), 0, "recovered");
 }
 
+static void test_profile_types(void)
+{
+    /* 协议常量取值: 一旦被无意改动, 两仓镜像会静默错位 */
+    CHECK_EQ(LS_BASE_REPLY_ALL,     0x0104, "cmd reply_all");
+    CHECK_EQ(LS_CTRL_SET_PROFILE,   0x0305, "cmd set_profile");
+    CHECK_EQ(LS_CTRL_GET_ALL,       0x0306, "cmd get_all");
+    CHECK_EQ(LS_CTRL_FORCE_PROFILE, 0x0307, "cmd force_profile");
+    CHECK_EQ(LS_PROFILE_NONE,       0xFF,   "profile none");
+    CHECK_EQ(LS_PROFILE_NUM,        3,      "profile num");
+
+    /* 结构体尺寸: 决定两仓字节流一致性, 必须逐字节对上 */
+    CHECK_EQ(sizeof(ls_profile_t),           10, "sizeof ls_profile_t");
+    CHECK_EQ(sizeof(ls_ctrl_set_profile_t),  11,
+             "sizeof ls_ctrl_set_profile_t");
+    CHECK_EQ(sizeof(ls_ctrl_get_all_t),       1, "sizeof ls_ctrl_get_all_t");
+    CHECK_EQ(sizeof(ls_ctrl_force_t),         1, "sizeof ls_ctrl_force_t");
+    CHECK_EQ(sizeof(ls_all_reply_t),         36, "sizeof ls_all_reply_t");
+
+    /* 字段偏移: radc 在前、comp 在后, 不得因对齐改变 */
+    CHECK_EQ(offsetof(ls_profile_t, radc),   0, "offset radc");
+    CHECK_EQ(offsetof(ls_profile_t, comp_x), 6, "offset comp_x");
+    CHECK_EQ(offsetof(ls_profile_t, comp_y), 8, "offset comp_y");
+}
+
 int main(void)
 {
     test_crc16();
     test_swap_endian();
+    test_profile_types();
     test_pack_unpack_roundtrip();
     test_unpack_errors();
 
