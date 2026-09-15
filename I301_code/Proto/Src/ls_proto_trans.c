@@ -185,8 +185,17 @@ int ls_ctrl_save_param(void)
  * @param profile 目标套 0~2(越界由设备侧拒收)
  * @param p       该套的码值与补偿值
  * @return 0 成功，<0 失败
+ * @note 副作用：独占使用模块级共享工作缓冲
+ *    s_work_pkt/s_work_buf/s_work_len，写满后经 s_cbs->send 回调把
+ *    字节流发出；故不可重入，须与其它发送函数串行调用。
+ * @note 调用关系：主机侧写配置命令入口调用，一次把一整套配置
+ *    (码值+补偿值)下发到设备；设备侧不调用本函数。
  *
  * radc 为单字节无需转换；comp_x/comp_y 转大端。
+ *
+ * 注: 本文件的"填包-打包-发送"样板在多个发送函数中重复出现, 系有意
+ *   沿袭既有风格(规范 1-1 项目现状优先); 抽取公共 helper 需连改既有
+ *   函数且后者无单测覆盖, 故另立重构任务处理, 不在本特性内做。
  */
 int ls_ctrl_set_profile(uint8_t profile, const ls_profile_t *p)
 {
@@ -197,7 +206,7 @@ int ls_ctrl_set_profile(uint8_t profile, const ls_profile_t *p)
 
     memset(&s_work_pkt, 0, sizeof(s_work_pkt));
 
-    ls_ctrl_set_profile_t msg;
+    ls_ctrl_set_profile_t msg;   /* 待下发载荷：套号 + 该套码值与补偿值 */
     msg.profile = profile;
     msg.data    = *p;
 
@@ -222,12 +231,17 @@ int ls_ctrl_set_profile(uint8_t profile, const ls_profile_t *p)
 /**
  * @brief 发送全量回读请求(0x0306)
  * @return 0 成功，<0 失败
+ * @note 副作用：与其它发送函数共用模块级工作缓冲
+ *    s_work_pkt/s_work_buf/s_work_len，并触发 s_cbs->send 把请求帧
+ *    发出；故不可重入，须串行调用。
+ * @note 调用关系：主机侧回读命令入口调用，请求设备整包回送三套
+ *    配置与当前工况；设备侧以 ls_base_reply_all() 应答。
  */
 int ls_ctrl_get_all(void)
 {
     memset(&s_work_pkt, 0, sizeof(s_work_pkt));
 
-    ls_ctrl_get_all_t msg;
+    ls_ctrl_get_all_t msg;   /* 回读请求载荷：占位字节，值无实义 */
     msg.req = 0xFF;
 
     s_work_pkt.type     = LS_CTRL_GET_ALL >> 8;
@@ -247,12 +261,17 @@ int ls_ctrl_get_all(void)
  * @brief 发送强制套命令(0x0307)；同一帧用于保活
  * @param profile 0~2 强制到该套；LS_PROFILE_NONE(0xFF) 解除强制
  * @return 0 成功，<0 失败
+ * @note 副作用：复用模块级工作缓冲
+ *    s_work_pkt/s_work_buf/s_work_len，每调用一次即经 s_cbs->send
+ *    发一帧(保活依赖此帧周期发送)，故不可重入。
+ * @note 调用关系：主机侧强制套命令入口与保活定时入口调用；解除
+ *    强制时入参传 LS_PROFILE_NONE。
  */
 int ls_ctrl_force_profile(uint8_t profile)
 {
     memset(&s_work_pkt, 0, sizeof(s_work_pkt));
 
-    ls_ctrl_force_t msg;
+    ls_ctrl_force_t msg;   /* 强制套载荷：目标套号，0xFF 为解除强制 */
     msg.profile = profile;
 
     s_work_pkt.type     = LS_CTRL_FORCE_PROFILE >> 8;
@@ -317,11 +336,16 @@ int ls_base_reply(void)
 /**
  * @brief 发送全量回复包(0x0104)：设备信息 + 三套配置 + 当前工况
  * @return 0 成功，<0 失败
+ * @note 副作用：占用模块级共享工作缓冲
+ *    s_work_pkt/s_work_buf/s_work_len，载荷由 s_cbs->get_device_info_all
+ *    回调填充(未注册时留零值)，填好后经 s_cbs->send 发出，不可重入。
+ * @note 调用关系：设备侧请求处理——收到全量回读请求(0x0306)后由
+ *    接收分发调用，与 ls_base_reply() 属同一应答入口模式。
  */
 int ls_base_reply_all(void)
 {
-    ls_all_reply_t reply;
-    uint8_t i;
+    ls_all_reply_t reply;   /* 全量回复载荷：设备信息+三套配置+工况 */
+    uint8_t i;              /* 遍历三套配置的下标 */
 
     memset(&reply, 0, sizeof(reply));
 
