@@ -14,6 +14,19 @@
 
 #include "ls_proto.h"
 
+/* 协议字节偏移(包头 13 字节固定长; 见 Proto/Src/ls_proto.c 的 ls_pack 写入顺序)
+ *   [0,12]  包头字符串 LIGHTSPACE-XY
+ *   [13,14] pck_len(大端)
+ *   [15,16] version(大端)
+ *   [17]    type
+ *   [18]    cmd
+ *   [19,20] data_len(大端)
+ *   [21..]  data
+ *   CRC 覆盖 [0, pck_len-3], 大端存于 [pck_len-2, pck_len-1] */
+#define OFF_PCK_LEN   13
+#define OFF_DATA_LEN  19
+#define OFF_DATA      21
+
 /* ---- 测试脚手架 ---- */
 static int s_fail = 0;
 static int s_pass = 0;
@@ -82,8 +95,8 @@ static void test_pack_unpack_roundtrip(void)
     CHECK_TRUE(memcmp(buf, LS_HEADER_STR, LS_HEADER_LEN) == 0,
                "header str");
     /* pck_len 大端 */
-    CHECK_EQ(buf[13], 0x00, "pck_len hi");
-    CHECK_EQ(buf[14], LS_DATA_BASE_LEN + 1, "pck_len lo");
+    CHECK_EQ(buf[OFF_PCK_LEN], 0x00, "pck_len hi");
+    CHECK_EQ(buf[OFF_PCK_LEN + 1], LS_DATA_BASE_LEN + 1, "pck_len lo");
 
     memset(&out, 0, sizeof(out));
     CHECK_EQ(ls_unpack(buf, len, &out), 0, "unpack ret");
@@ -110,16 +123,16 @@ static void test_unpack_errors(void)
     buf[0] = (uint8_t)(buf[0] ^ 0xFF);
 
     /* data_len 与 pck_len 不符: 把 data_len 字段改大 */
-    buf[19] = 0x00;
-    buf[20] = 0x02;
+    buf[OFF_DATA_LEN] = 0x00;
+    buf[OFF_DATA_LEN + 1] = 0x02;
     CHECK_EQ(ls_unpack(buf, len, &out), -3, "len mismatch");
-    buf[19] = 0x00;
-    buf[20] = 0x01;
+    buf[OFF_DATA_LEN] = 0x00;
+    buf[OFF_DATA_LEN + 1] = 0x01;
 
     /* CRC 错: 改载荷 */
-    buf[21] = (uint8_t)(buf[21] ^ 0xFF);
+    buf[OFF_DATA] = (uint8_t)(buf[OFF_DATA] ^ 0xFF);
     CHECK_EQ(ls_unpack(buf, len, &out), -4, "bad crc");
-    buf[21] = (uint8_t)(buf[21] ^ 0xFF);
+    buf[OFF_DATA] = (uint8_t)(buf[OFF_DATA] ^ 0xFF);
 
     /* NULL 入参 */
     CHECK_EQ(ls_unpack(NULL, len, &out), -1, "null in_buf");
