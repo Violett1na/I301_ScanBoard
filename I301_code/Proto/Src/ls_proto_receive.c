@@ -345,9 +345,9 @@ int handle_ctrl_set_profile(ls_packet_t *pkt)
 
 /**
  * @brief 设备收到全量回读请求(0x0306)：先回控制应答，再回全量回复包。
- * @param pkt 已解包的协议包，载荷仅 1 字节占位，内容无实义
- * @return 0 成功；-1 回调未注册(仍会应答并回全量数据)
- * @note 输入：不使用载荷内容，仅借命令字触发一次回读。
+ * @param pkt 已解包的协议包，载荷仅 1 字节(req)，内容无实义
+ * @return 0 成功；-1 载荷长度不符(不应答) 或回调未注册
+ * @note 输入：校验载荷长度后不使用其内容，借命令字触发一次回读。
  * @note 输出：先调 s_cbs->ctrl_get_all 通知应用层，再经发送层依次发出
  *    控制应答帧(0x0306)与全量回复帧(0x0104)。
  * @note 调用关系：ls_handle() 识别 0x0306 后调用；全量回复帧由
@@ -358,7 +358,13 @@ int handle_ctrl_set_profile(ls_packet_t *pkt)
 int handle_ctrl_get_all(ls_packet_t *pkt)
 {
     LS_LOG_INFO("ls - received ctrl get all.");
-    (void)pkt;
+
+    /* 数据长度校验：协议规定 1 字节(req) */
+    if (pkt->data_len != sizeof(ls_ctrl_get_all_t))
+    {
+        LS_LOG_INFO("ls - ctrl get all data_len err: %u", pkt->data_len);
+        return -1;
+    }
 
     int ret = 0;    /* 回调返回值：0 成功，非 0 由回调给出的失败码 */
     if (s_cbs && s_cbs->ctrl_get_all)

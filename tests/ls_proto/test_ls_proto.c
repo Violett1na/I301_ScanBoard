@@ -351,7 +351,11 @@ static int stub_ctrl_set_profile(const ls_ctrl_set_profile_t *m)
 }
 
 static int s_rx_get_all_n = 0;  /* 全量回读请求回调调用次数 */
-static int stub_ctrl_get_all(void) { s_rx_get_all_n++; return 0; }
+static int stub_ctrl_get_all(void)
+{
+    s_rx_get_all_n++;
+    return 0;
+}
 
 static ls_ctrl_force_t s_rx_force;  /* 最近一次收到的强制套载荷 */
 static int s_rx_force_n = 0;        /* 强制套回调调用次数 */
@@ -430,6 +434,13 @@ static void test_handle_set_profile(void)
     /* 回送控制应答 */
     CHECK_EQ(s_tx_count, 1, "acked once");
 
+    /* 回调返回非 0 → 失败码透传, 但应答帧仍须发出(契约核心) */
+    s_rx_set_profile_ret = -3;  /* 桩置非 0: 模拟应用层处理失败 */
+    reset_tx();
+    CHECK_EQ(ls_parse(&pkt, buf, len), -3, "callback failure propagated");
+    CHECK_EQ(s_tx_count, 1, "acked even on callback failure");
+    s_rx_set_profile_ret = 0;   /* 复位, 避免影响后续用例 */
+
     /* 长度不符 → 拒收且不回调 */
     s_rx_set_profile_n = 0;
     len = make_packet(LS_CTRL_SET_PROFILE, &in, sizeof(in) - 1U, buf);
@@ -475,6 +486,13 @@ static void test_handle_get_all_and_force(void)
              "second is reply_all");
     CHECK_EQ(pkt.data[4], 1, "active in reply_all");
     CHECK_EQ(pkt.data[16], 120, "p1 radc x1 in reply_all");
+
+    /* 长度不符 → 拒收且不回调(0x0306 载荷固定 1 字节) */
+    len = make_packet(LS_CTRL_GET_ALL, &req, sizeof(req) - 1U, buf);
+    s_rx_get_all_n = 0;
+    reset_tx();
+    CHECK_EQ(ls_parse(&pkt, buf, len), -1, "short get_all rejected");
+    CHECK_EQ(s_rx_get_all_n, 0, "no get_all callback on bad len");
 
     /* 0x0307 强制 */
     ls_ctrl_force_t fo;     /* 强制套载荷：目标套号 */
