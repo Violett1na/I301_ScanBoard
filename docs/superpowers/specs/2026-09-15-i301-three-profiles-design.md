@@ -1,0 +1,502 @@
+# I301 三套配置（振镜 30kHz 大角度 / 40kHz 小角度 / 过流降速）设计规格
+
+- 日期：2026-09-15
+- 版本：2026-09-15-A（首次成文）
+- 状态：设计已确认（用户 2026-09-15 逐节认可），待转 writing-plans
+- 涉及仓库：
+  - 上位机 `USB_I301_QT/scan_setting`（Qt 6 工具，本 spec 的宿主仓库之一）
+  - 下位机 `I301_code-ad-da`（I301 振镜 XY 板固件）
+- 副本与版本规则：本 spec 在**两个仓库各存一份**，内容一致、各自标注日期与版本号。
+  **两份日期/版本号不一致时，以较新者为准**；修订须两处同步。
+  - 上位机副本：`doc/superpowers/specs/2026-09-15-i301-three-profiles-design.md`
+  - 下位机副本：`docs/superpowers/specs/2026-09-15-i301-three-profiles-design.md`
+- 关联：
+  - `2026-08-04-ad-da-processing-path-design.md`（AD-DA 处理通路；本设计沿用其线性算法）
+  - `2026-08-27-ocd-pwm-signaling-design.md`（过流检测与信令）
+  - `2026-09-02-portable-layered-architecture-design.md`（四层架构；本设计须遵守其分层约束）
+  - `2026-09-10-bl1082-n32h765-adc-mcu-redesign-design.md`（进行中的硬件改版；本设计不阻塞它）
+
+---
+
+## 1 背景与目标
+
+### 1.1 需求
+
+I301 需要保存**三套配置**，分别对应三种振镜工况：
+
+| 索引 | 工况 | 说明 |
+|---|---|---|
+| 0 | 振镜 30kHz 大角度 | 大摆幅、较低扫描频率 |
+| 1 | 振镜 40kHz 小角度 | 小摆幅、较高扫描频率 |
+| 2 | 过流降速 | 过流工况下的保护性配置 |
+
+每套对应一组不同的「PID 参数」（术语见 §1.2）。上位机需同步改造以配合下位机。
+
+### 1.2 术语澄清（2026-09-15 用户确认）
+
+**「PID 参数」是俗称**。本设计中它指**模拟伺服环的可调点**，即经 AD5290 数字电位器设定的电位器码值（RDAC code）与补偿偏置值——**不是**数字 PID 控制器的增益。
+
+澄清依据（勘探所得）：
+
+- 下位机当前**无任何数字 PID 代码**；
+- `App/ad_da.h` 的算法是线性直通（IN 通道反相 `y=(4095-x)+off`、FB 通道同相 `y=x+off`，饱和钳位 0..4095），不带闭环；
+- 位置环是**模拟伺服环**，且在 `2026-09-10-bl1082-n32h765-adc-mcu-redesign-design.md` 中被列为「一字不动」红线（"位置环零延迟闭在模拟域"）。
+
+因此三套配置 = **三套码值组合**，每套 = 6 路 RDAC 码值 + 2 路补偿值，与现有 `flash_store_t` 同构，只是从 1 套变 3 套。
+
+### 1.3 与过流检测（OCD）的关系
+
+本设计**不改变** OCD 模块本身（`App/ocd.c` / `App/ocd_sig.c`，当前 `OCD_ENABLE = 0`）。
+
+「过流降速」套是**第三套码值**，由下位机自主判定在过流工况下启用。触发时机、判定阈值、是否恢复 OCD 图像干预，均属**下位机侧设计，不在本 spec 范围**（见 §8 开放项）。
+
+### 1.4 现状勘探（2026-09-15）
+
+**上位机**（Qt 6 / qmake / libusb-1.0）
+
+- 协议栈位于 `usb_i301/Proto/`。包格式 = 包头 `LIGHTSPACE-XY`(13B) + `pck_len`(2) + `version`(2) + `type`(1) + `cmd`(1) + `data_len`(2) + `data` + `CRC16`(2)；`LS_DATA_BASE_LEN = 23`，`LS_MAX_DATA_LEN = 5120`
+- 现有命令字：`0x0101` 查询 / `0x0102` 回复 / `0x0103` 重启 / `0x0301` 控制应答 / `0x0302` 电位器 / `0x0303` 补偿 / `0x0304` 参数保存
+- `ls_base_reply_t`（14B）= `device_id`(2) + `device_version`(2) + `r_x1..r_y3`(6) + `comp_x`(2) + `comp_y`(2)——即当前**单套**的读回通路
+- UI：窗口 572×366；左侧按钮列；右侧 RX 日志 + X/Y 补偿；底部「设置阻值」X/Y 各 3 通道共 8 个 `QSpinBox`
+- ️ `Widget::on_pb_sendData_clicked` 靠**解析控件名末两位**判定轴/通道（`sb_x1` → `x`, `1`），控件结构一变即失效，本次必须一并处理
+- 8 个 `on_sb_*_valueChanged` 当前**无条件**下发 `ls_ctrl_rdac`（受 `auto_send_flag` 开关约束），本次语义变更见 §5.4
+
+**下位机**（STM32G474 / 四层架构）
+
+- `App/param.c`：`flash_store_t { radc_value_t radc; comp_value_t comp; }` = **10B**，经 `bsp_flash` 以 magic + CRC-16 + 长度校验持久化；写方单点收敛于 `param.c`
+- `Bsp/bsp_flash.c`：magic `0x4C535059`（"LSPY"）+ `len` + `data[32]` + `CRC16`；`BSP_FLASH_DATA_MAX = 32`
+- `Platform/stm32g4/port_flash_g4.c`：参数区 = **末页（2KB）**，故 32B 是**软件上限，非硬件限制**
+- `param.c` 有编译期尺寸约束 `param_flash_fit_check[]`（规范 10-10）
+- 补偿值范围 [-2000, 2000]（`COMP_VALUE_MIN/MAX`），越界整体回退默认
+- 默认码值：X1=40 X2=80 X3=45 Y1=40 Y2=80 Y3=45，COMP=-80
+- **无 PID 代码**；`App/ocd.c` 过流检测存在但 `OCD_ENABLE = 0`
+- **宿主单测先例**：`tests/ad_da_alg/`（gcc `-std=c99 -Wall -Wextra -O2` + `run.sh` + 手写 `CHECK_EQ` 宏，无测试框架）——本设计的测试方案沿用之（§7）
+
+**关键约束：协议栈双仓镜像**
+
+以下文件在两个仓库各存一份：
+
+| 文件 | 上位机路径 | 下位机路径 |
+|---|---|---|
+| `ls_proto.c/h` | `usb_i301/Proto/{Src,Inc}/` | `I301_code/Proto/{Src,Inc}/` |
+| `ls_proto_receive.c/h` | 同上 | 同上 |
+| `ls_proto_trans.c/h` | 同上 | 同上 |
+| `ls_proto_data.h` | 同上 | 同上 |
+| `ls_proto_host_app.c/h` | 同上（仅上位机有） | — |
+| `ls_proto_device_app.c/h` | 同上（不参与上位机编译） | `I301_code/App/` |
+
+⚠️ **任何协议改动必须两处同步**，否则两端对不上。
+
+### 1.5 目标
+
+1. 下位机持久化三套码值配置，并按工况自主切换；
+2. 协议提供三套的整包读写、强制套控制、全量回读；
+3. 上位机提供三套编辑界面 + 强制标定模式；
+4. 布局变更导致的一次性回退默认可接受，不写迁移代码（§3.3）。
+
+### 1.6 本 spec 的范围边界
+
+**在范围内**（后续实施计划应覆盖）：
+
+- §3 配置模型与持久化（下位机 `param` 层改造）
+- §4 协议契约（两仓镜像同步）
+- §5 上位机改造（全部）
+- §6 安全边界
+
+**不在范围内**（须另出 spec，见 §8 O4/O5）：
+
+- 下位机**工况判定模块**：如何从 IN 通道信号判定 30kHz / 40kHz、迟滞与去抖窗口
+- 「过流降速」套的**触发与解除条件**，以及与 `OCD_ENABLE`（当前为 0）的关系
+
+因此本 spec 的实施计划只覆盖「配置模型 + 协议 + 上位机 + `param` 层」，判定逻辑落地前，`active_profile` 可由下位机侧临时代填常量以便联调。
+
+---
+
+## 2 总体设计
+
+### 2.1 职责划分（2026-09-15 用户确认）
+
+| 侧 | 职责 |
+|---|---|
+| **下位机** | 自主判定当前工况并自动切换到对应的一套；持久化三套；执行强制套；强制超时自解除 |
+| **上位机** | 三套配置的**编辑器**；提供**强制套标定模式**；显示设备上报的工况快照 |
+
+上位机**不参与**运行时工况判定。理由：板子正常工作时是总控板持续喂模拟波形流的从机，上位机仅在产线/调试时接入，不在控制链路上。
+
+### 2.2 数据流
+
+```
+                    ┌─────────────── 下位机 ───────────────┐
+                    │                                       │
+  工况判定（自主）   │  ┌─────────────┐                      │
+  ─────────────────▶│  │ prof_sel    │ active_profile       │
+  （IN 信号频率 /    │  │ (判定模块)  │──────┐               │
+    过流状态）       │  └─────────────┘      ▼               │
+                    │                 ┌──────────────      │
+  强制命令 0x0307   │────────────────▶│ param 参数层 │      │
+  ─────────────────▶│                 │ sets[3]      │      │
+                    │                 │ active/forced│      │
+  写整套 0x0305     │────────────────▶└──────┬───────      │
+                    │                        │              │
+                    │                        ▼              │
+  实时微调 0x0302/3 │──────────────▶ ad5290_set_all_code()  │
+                    │                   / ISR 读 comp       │
+                    │                        │              │
+                    │            保存 0x0304 ▼              │
+                    │                 bsp_flash_save()      │
+                    │                                       │
+  读全量 0x0306     │──── 0x0104 全量回复（三套+工况）──────│
+                    └───────────────────────────────────────┘
+```
+
+**要点**：`active_profile` 是**判定模块的输出**，不是上位机写入的量。上位机可写的是三套**内容**（`0x0305`）与**强制套**（`0x0307`）。
+
+---
+
+## 3 配置模型与持久化（下位机侧）
+
+### 3.1 配置索引
+
+| 值 | 含义 |
+|---|---|
+| `0` | 振镜 30kHz 大角度 |
+| `1` | 振镜 40kHz 小角度 |
+| `2` | 过流降速 |
+| `0xFF` | 特殊值：**强制解除**（`0x0307` 专用） |
+
+`PARAM_PROFILE_NUM = 3`。
+
+### 3.2 数据结构（`App/param.h`）
+
+```c
+/* 一套配置的持久化形态 */
+typedef struct
+{
+    radc_value_t  radc;    /* 6B: X1 X2 X3 Y1 Y2 Y3，各 0~255 */
+    comp_value_t  comp;    /* 4B: 补偿值，各 [-2000, 2000] */
+} param_profile_t;         /* 10B */
+
+/* Flash 持久化存储总结构体（布局变更 → 旧数据一次性回退默认，见 §3.3） */
+typedef struct
+{
+    param_profile_t sets[PARAM_PROFILE_NUM];   /* 3 套 = 30B */
+} flash_store_t;
+```
+
+**尺寸账**：3 × 10B = **30B ≤ `BSP_FLASH_DATA_MAX`(32)**，`param_flash_fit_check` 编译期校验直接通过。但**零余量**——建议提到 64 留后续余地（§8 开放项 O1）。
+
+**不持久化的量**：
+
+- `active_profile`（当前生效套）——自主判定每次上电重判，无持久化意义
+- `forced_profile`（强制套）——**易失态，任何重启回到自主**
+
+### 3.3 向后兼容：一次性回退默认
+
+`bsp_flash_load()` 含长度一致性检查：
+
+```c
+if (param.len != len)          /* 布局变更/混烧防护 */
+{
+    LOG_SYS_ERROR("flash param len mismatch.");
+    return -1;
+}
+```
+
+旧设备 flash 中存的是 10B 布局，新固件按 30B 读取 → 长度不符 → 判为无效 → `param_init()` 走默认分支。
+
+**这是项目既有先例**（`bsp_flash.c` 头注释已写明："本布局（较旧版新增长度字段）与历史存储不兼容，重构后首次上电将以'无有效数据'回退默认参数（一次性）"），故**不写迁移代码**，代价是升级后需重新标定三套。
+
+### 3.4 参数层接口（`App/param.c` 建议形态）
+
+参数实体仍为模块私有（`static`），写方单点收敛（规范 13-1）：
+
+```c
+const param_profile_t *param_profile(uint8_t idx);              /* 只读快照 */
+int  param_profile_set(uint8_t idx, const param_profile_t *p);  /* 整包写: 0/-1 */
+int  param_force_set(uint8_t idx);                              /* 强制到某套: 0/-1 */
+int  param_force_clear(void);                                   /* 解除强制 */
+uint8_t param_active(void);                                     /* 当前生效套 */
+uint8_t param_forced(void);                                     /* 强制套; 0xFF=未强制 */
+int  param_save(void);                                          /* 整块持久化 */
+```
+
+`param_comp()` 的 ISR 只读语义**保持不变**——它返回的是**当前生效套**的 comp。
+
+---
+
+## 4 协议契约
+
+> ⚠️ 本章改动须在**上位机与下位机两处同步**（§1.4）。
+
+### 4.1 命令字（`ls_proto_data.h`）
+
+```c
+typedef enum
+{
+    LS_BASE_QUERY             = 0x0101,   /* 不动 */
+    LS_BASE_REPLY             = 0x0102,   /* 不动 —— 结构不变，向后兼容 */
+    LS_BASE_RESET_DEVICE      = 0x0103,   /* 不动 */
+    LS_BASE_REPLY_ALL         = 0x0104,   /* 新增: 全量回复(三套+工况) */
+
+    LS_CTRL_REPLY             = 0x0301,   /* 不动 */
+    LS_CTRL_RDAC              = 0x0302,   /* 不动 —— 实时微调当前生效套 */
+    LS_CTRL_SET_COMP          = 0x0303,   /* 不动 —— 同上 */
+    LS_CTRL_SAVE_PARAM        = 0x0304,   /* 不动 —— 负载不变，见 §4.4 */
+    LS_CTRL_SET_PROFILE       = 0x0305,   /* 新增: 一包写整套 */
+    LS_CTRL_GET_ALL           = 0x0306,   /* 新增: 请求全量 */
+    LS_CTRL_FORCE_PROFILE     = 0x0307,   /* 新增: 强制套/保活/解除 */
+} ls_type_e;
+
+#define LS_PROFILE_NONE  0xFF   /* 强制解除（0x0307 专用） */
+```
+
+### 4.2 负载结构
+
+```c
+#pragma pack(1)
+
+/* 一套配置（0x0305 写、0x0104 读共用，10B）
+ * 分层说明：协议层自定义，不依赖 App 层 param.h 类型（规范 13-3）；
+ *   字节布局与 param_profile_t 一致，映射放在 device_app 层。 */
+typedef struct
+{
+    uint8_t  radc[6];      /* X1 X2 X3 Y1 Y2 Y3，0~255；单字节无需转换 */
+    int16_t  comp_x;       /* X 轴补偿值；需大小端转换 */
+    int16_t  comp_y;       /* Y 轴补偿值；需大小端转换 */
+} ls_profile_t;
+
+/* 写整套（命令字 0x0305） */
+typedef struct
+{
+    uint8_t      profile;   /* 0~2；越界拒收 */
+    ls_profile_t data;
+} ls_ctrl_set_profile_t;    /* 11B */
+
+/* 请求全量（命令字 0x0306） */
+typedef struct
+{
+    uint8_t req;            /* 填 0xFF */
+} ls_ctrl_get_all_t;        /* 1B */
+
+/* 强制套（命令字 0x0307；同时用作保活帧） */
+typedef struct
+{
+    uint8_t profile;        /* 0~2 强制；0xFF 解除 */
+} ls_ctrl_force_t;          /* 1B */
+
+/* 全量回复包（命令字 0x0104，36B） */
+typedef struct
+{
+    uint16_t     device_id;        /* 需转换 */
+    uint16_t     device_version;   /* 需转换 */
+    uint8_t      active_profile;   /* 自主判定结果 0~2 */
+    uint8_t      forced_profile;   /* 强制套 0~2；0xFF = 未强制 */
+    ls_profile_t profiles[3];      /* comp_x/comp_y 需转换 */
+} ls_all_reply_t;
+
+#pragma pack()
+```
+
+**尺寸核对**：`ls_all_reply_t` = 2 + 2 + 1 + 1 + 3×(6+2+2) = **36B**，远小于 `LS_MAX_DATA_LEN`(5120) 与包内 data 区(5097B)。
+
+### 4.3 命令字总表
+
+| 命令字 | 名称 | 方向 | 负载 | 大小 | 说明 |
+|---|---|---|---|---|---|
+| `0x0101` | `LS_BASE_QUERY` | H→D | `uint8 0xFF` | 1B | 不变 |
+| `0x0102` | `LS_BASE_REPLY` | D→H | `ls_base_reply_t` | 14B | **结构不变** |
+| `0x0103` | `LS_BASE_RESET_DEVICE` | H→D | `uint8 0xFF` | 1B | 不变 |
+| `0x0104` | `LS_BASE_REPLY_ALL` | D→H | `ls_all_reply_t` | 36B | **新增** |
+| `0x0301` | `LS_CTRL_REPLY` | D→H | `uint16 typeCMD` | 2B | 不变 |
+| `0x0302` | `LS_CTRL_RDAC` | H→D | `{xy,ch,code}` | 3B | **不变**，作用于当前生效套 |
+| `0x0303` | `LS_CTRL_SET_COMP` | H→D | `{xy,value}` | 3B | **不变**，作用于当前生效套 |
+| `0x0304` | `LS_CTRL_SAVE_PARAM` | H→D | `uint8 0xFF` | 1B | **不变**（见 §4.4） |
+| `0x0305` | `LS_CTRL_SET_PROFILE` | H→D | `ls_ctrl_set_profile_t` | 11B | **新增** |
+| `0x0306` | `LS_CTRL_GET_ALL` | H→D | `ls_ctrl_get_all_t` | 1B | **新增** |
+| `0x0307` | `LS_CTRL_FORCE_PROFILE` | H→D | `ls_ctrl_force_t` | 1B | **新增** |
+
+### 4.4 对预期方案的四处裁定（2026-09-15）
+
+讨论中曾设想 `0x0306` 为「读单套」、`0x0304` 加 `{profile}` 负载。**最终裁定如下**：
+
+1. **`0x0306` 定为「读全量」而非「读单套」**。连接时与手动「从设备读回」都要一次拿全三套，单套读取无使用场景，省去一个负载分支与一条回包路径。
+2. **`0x0304` 保持无负载**。`bsp_flash_save()` 是「整页擦除 + 整块写入」，无论存几套都是同一笔开销，加 `{profile}` 徒增分支而无收益。语义 = **保存全部三套**。
+3. **不改 `0x0102` 的结构**。新增独立回包 `0x0104` 承载全量。理由：改 `0x0102` 会让旧上位机读回全错；新增而非改造可保证旧工具链不断。
+4. **`0x0302`/`0x0303` 语义不动**（作用于当前生效套），用于强制标定模式下的实时微调，见 §5.4。
+
+### 4.5 设备侧处理约定
+
+沿用既有形态（`ls_proto_receive.c` 的 `handle_ctrl_*` 模式）：
+
+- 每个控制包**校验 `data_len`**，不符则记日志并返回 -1（既有实现已如此，新增命令字须一致）
+- 无论成功失败**都回送 `0x0301` 控制应答**，`data` 填被应答的命令字（既有注释："便于上位机做超时与重传管理"）
+- `0x0104` 全量回复由 `handle_ctrl_get_all()` 触发，经 trans 层组装后下发
+
+---
+
+## 5 上位机改造
+
+### 5.1 改动文件清单
+
+| 文件 | 改动 |
+|---|---|
+| `Proto/Inc/ls_proto_data.h` | 新命令字 + `ls_profile_t` / `ls_ctrl_set_profile_t` / `ls_ctrl_get_all_t` / `ls_ctrl_force_t` / `ls_all_reply_t` |
+| `Proto/Inc/ls_proto_trans.h` + `Src/ls_proto_trans.c` | 新增 `ls_ctrl_set_profile()` / `ls_ctrl_get_all()` / `ls_ctrl_force_profile()` / `ls_base_reply_all()` |
+| `Proto/Inc/ls_proto_receive.h` + `Src/ls_proto_receive.c` | 新增 `handle_ctrl_get_all()` / `handle_ctrl_force_profile()` / `handle_base_reply_all()`；回调集合加 `on_reply_all` |
+| `Proto/Src/ls_proto_host_app.c` | 注册 `on_reply_all` 回调并桥接到 Widget |
+| `widget.h` / `widget.cpp` | 三套缓存 + 选套 + 读回/写入/强制 + 保活定时器 + 控件名解析重构 |
+| `widget.ui` | 顶部套选 ×3、`写入选中的套` / `从设备读回` 按钮、强制套下拉、工况标签 |
+| `usb_i301.pro` | 如新增文件需同步 `SOURCES` / `HEADERS`（AGENTS.md 明文要求） |
+
+### 5.2 界面（2026-09-15 用户选定：顶部选套 + 共用一组控件）
+
+```
+┌─ I301-XY ──────────────────────────────────┐
+│[连接设备🛜][清空内容👉]                        │
+│ 当前编辑: (•)30k大角度 ( )40k小角度 ( )过流降速  │
+│┌─────────────────┐┌──────────────────────┐ │
+││       RX 日志       ││ 设置阻值   CH1  CH2  CH3 │ │
+││ RX: 4C 49 47 48...  ││ X通道      [128][128][128]│ │
+││                     ││ Y通道      [128][128][128]│ │
+││                     ││ X补偿[-5]  Y补偿[+3]     │ │
+│└─────────────────┘└──────────────────────┘ │
+│[写入选中的套][从设备读回]                        │
+│[保存到Flash💾][自动发送✔️][发送数据]              │
+│强制套:[关▾]          设备工况: 40k小角度(自主)    │
+└────────────────────────────────────────────┘
+```
+
+**理由**：控件数量不变（仍 8 个 `QSpinBox`），窗口尺寸几乎不变，对现有代码改动最小；代价是看不到三套横向差异——但强制标定模式下注意力本就集中在单套上，可接受。
+
+**新增控件**：
+
+| 控件名（建议） | 类型 | 说明 |
+|---|---|---|
+| `rb_prof30k` / `rb_prof40k` / `rb_profOc` | `QRadioButton` ×3（`QButtonGroup`） | 当前编辑哪套 |
+| `pb_writeProfile` | `QPushButton` | 写入选中的套（`0x0305`） |
+| `pb_readAll` | `QPushButton` | 从设备读回（`0x0306`） |
+| `cb_force` | `QComboBox` | 关 / 30k大角度 / 40k小角度 / 过流降速 |
+| `label_state` | `QLabel` | 设备工况：`40k小角度(自主)` / `过流降速(强制)` |
+
+### 5.3 Widget 新增成员
+
+```cpp
+ls_profile_t m_profiles[3];       /* 编辑缓存: 三套配置(复用协议层类型) */
+int       m_editProfile   = 0;    /* 当前编辑哪套 */
+bool      m_loading       = false;/* 载入控件时抑制 valueChanged 误触发 */
+uint8_t   m_activeProfile = 0xFF; /* 设备上报: 当前生效套 */
+uint8_t   m_forcedProfile = 0xFF; /* 设备上报/本地: 强制套 */
+QTimer   *m_keepAliveTimer = nullptr; /* 强制模式保活 */
+```
+
+> `m_loading` 是必需品：切套/读回时批量 `setValue()` 会触发 `valueChanged`，不抑制就会误发。
+
+### 5.4 核心交互
+
+| # | 触发 | 行为 |
+|---|---|---|
+| 1 | 点「连接设备」 | `m_usb->init()` → `ls_host_app_init()` → `ls_base_query()`（现有）→ `ls_ctrl_get_all()` |
+| 2 | 收到 `0x0104` | 存 `m_profiles` / `m_activeProfile` / `m_forcedProfile`；刷新 `cb_force` 与 `label_state`；`m_loading` 包裹下把 `m_profiles[m_editProfile]` 刷进 8 个 spinbox |
+| 3 | 点套选 radio | `m_editProfile = n`；`m_loading` 包裹下刷新 spinbox；刷新 `cb_force` 当前值 |
+| 4 | spinbox 值变 | ① 更新 `m_profiles[m_editProfile]`；② **仅当「强制已开 且 `m_editProfile == m_forcedProfile`」**时才实时下发 `0x0302`/`0x0303`；否则只落缓存。`m_loading` 为真时直接返回 |
+| 5 | 点「写入选中的套」 | `ls_ctrl_set_profile(m_editProfile, ...)` 一包 → 随后自动 `ls_ctrl_get_all()` 核对 |
+| 6 | 点「从设备读回」 | `ls_ctrl_get_all()` |
+| 7 | `cb_force` 改变 | 选某套 → `ls_ctrl_force_profile(n)` 并启动 1s `QTimer` 保活；选「关」→ `ls_ctrl_force_profile(0xFF)` 并停表 |
+| 8 | 保活定时器到点 | 重发 `0x0307 {m_forcedProfile}`（见 §6.1） |
+| 9 | 断开 / 析构 | 强制若开着，**先发 `0x0307 {0xFF}` 解除**，再 `deinit()` |
+| 10 | 点「保存数据💾」 | `ls_ctrl_save_param()` 不变（保存全部三套） |
+
+### 5.5 ️ 行为变更：实时下发的守卫条件
+
+**现状**：8 个 `on_sb_*_valueChanged` 在 `auto_send_flag` 打开时**无条件**下发 `ls_ctrl_rdac` / `ls_ctrl_set_comp`，直接改设备。
+
+**本次变更**：加前置条件——**仅当强制已开且编辑套 == 强制套**时才实时下发，否则只改本地缓存。
+
+**理由**：下位机是自主运行的从机。若不加守卫，上位机在自主模式下编辑第 2 套时会误改设备**正在使用的**第 1 套，后果是运行中的振镜参数被静默改写。
+
+**代价**：不开强制就不能实时调参。这正是引入强制标定模式的原因——标定本就应当在受控状态下进行。
+
+### 5.6 控件名解析重构
+
+`on_pb_sendData_clicked` 现有实现靠末两位字符反解轴/通道：
+
+```cpp
+QChar axis = name.at(name.length() - 2);        // 'x' / 'y'
+int   digit = name.at(name.length() - 1).digitValue();
+```
+
+三套改造后该实现脆弱且难扩展，**建议改为显式查表**（`QHash<QSpinBox*, QPair<轴, 通道>>` 或 `QSpinBox::property()`），避免继续依赖控件命名约定。
+
+---
+
+## 6 安全边界
+
+### 6.1 强制套必须超时自解除（红线）
+
+- 强制生效后，设备若 **5s** 内未收到**任何**上位机包，**自动解除强制、回到自主判定**
+- 理由：上位机崩溃/拔线时不会发出解除帧。仅靠上位机显式解除**不可靠**——这是本设计中最容易造成现场事故的一点（板子被永久钉在一套配置上，且现场无法察觉）
+- 保活即上位机每 1s 重发 `0x0307 {m_forcedProfile}`，**不新增命令字**
+- 超时时长暂定 5s（§8 开放项 O3）
+
+### 6.2 强制态不持久化
+
+`forced_profile` 不落 flash。**任何重启（含看门狗复位、`0x0103` 软复位、掉电）都回到自主判定。**
+
+### 6.3 上报语义
+
+强制期间，`0x0104` 的回复中：
+
+- `active_profile` = **强制套**（因为设备此刻确实在用强制套）
+- `forced_profile` = 强制套索引（非 `0xFF`）
+
+上位机据此把标签显示为 `过流降速(强制)`。
+
+### 6.4 越界与失败
+
+- `0x0305` 的 `profile` 越界（>2）、`0x0307` 的 `profile` 越界且非 `0xFF` → 设备拒收、记日志、回控制应答
+- 码值范围：`radc` 0~255；`comp` 沿用 [-2000, 2000]，越界由 `param.c` 的 `comp_set_checked()` 整体回退默认（既有机制）
+
+---
+
+## 7 验证
+
+### 7.1 宿主单测（沿用项目既有先例）
+
+下位机仓库已有 `tests/ad_da_alg/`（gcc + `run.sh` + 手写 `CHECK_EQ` 宏，无框架）。本次照搬该形态：
+
+| 新增测试 | 覆盖 |
+|---|---|
+| `tests/ls_proto/` | `ls_pack` / `ls_unpack` / `ls_crc16` 往返；`ls_all_reply_t`、`ls_ctrl_set_profile_t` 的打包-解包一致性；大小端转换；`data_len` 校验分支；CRC 错包拒收 |
+| `tests/param/` | 三套读写互不串扰；索引越界拒收；comp 范围越界回退默认；`flash_store_t` 尺寸 = 30B（配 `param_flash_fit_check`） |
+
+**协议源码两仓同一份，一套测试两边受益**——这是把测试放在下位机仓库的理由。
+
+### 7.2 上板验证判据（规范 8-6：用户驱动）
+
+| # | 步骤 | 判据 |
+|---|---|---|
+| 1 | 连接设备 | 自动读回三套，界面显示设备工况标签正确 |
+| 2 | 改第 2 套某值 → 点「写入选中的套」 | 随后自动读回，值一致 |
+| 3 | 点「保存数据💾」→ 断电重启 → 重新连接 | 三套仍在，值与保存前一致 |
+| 4 | **写第 2 套，观察设备实际行为** | 设备正在使用的第 1 套**不受影响**（三套不串扰，验证 §5.5 守卫） |
+| 5 | 强制到第 3 套 | 标签显示 `过流降速(强制)` |
+| 6 | 保持强制 → 拔掉 USB → 等 5s | 下位机日志确认强制已自动解除、回自主判定 |
+| 7 | 强制中 → 点「断开设备」 | 设备立即回自主（无需等超时） |
+
+### 7.3 上位机测试设施现状
+
+上位机仓库目前**无测试设施**。本设计不新增 Qt 测试框架（YAGNI）；协议部分的测试由 §7.1 覆盖。若后续上位机逻辑（选套/守卫/保活）出现回归，再评估引入。
+
+---
+
+## 8 开放项
+
+| # | 开放项 | 现状 | 备注 |
+|---|---|---|---|
+| O1 | `BSP_FLASH_DATA_MAX` 是否 32 → 64 | 保持 32（30B 刚好压进，校验通过） | 零余量；若后续再加参数（如判定阈值）必然越界 |
+| O2 | §5.5 实时下发守卫的行为变更 | 已按守卫方案设计 | 属**对现有行为的改变**，须在 §7.2 第 4 项上板确认 |
+| O3 | 强制超时时长 | 暂定 5s | 待上板标定（太短会误解除，太长削弱保护） |
+| O4 | 下位机如何判 30k vs 40k | 未设计 | 下位机侧设计（测 IN 通道信号频率？），不在本 spec 范围 |
+| O5 | 「过流降速」套的触发与解除条件 | 未设计 | 与 `OCD_ENABLE`（当前为 0）的关系待定，不在本 spec 范围 |
+| O6 | RDAC 码值下限不一致 | 协议/固件为 0~255，上位机 `QSpinBox` 下限为 **1** | 码值 0 目前从界面不可达，需确认是否有意为之 |
+| O7 | `widget.ui` 中 `le_pid` | 存在但代码未使用 | 命名易与本次「PID」混淆，建议改名或移除 |
