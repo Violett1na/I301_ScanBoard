@@ -3,10 +3,12 @@
  * 覆盖(边界优先):
  *   1. 三套存储互不串扰(写第 2 套不动第 0/1 套);
  *   2. 索引越界拒收;
- *   3. comp 范围越界回退默认;
+ *   3. comp 范围越界回退默认, 且阈值等值含端点(规范 8-2);
  *   4. 生效套切换后 param_radc_get/param_comp 跟随;
  *   5. 强制优先于自主生效;
- *   6. flash_store_t 尺寸 = 30 字节。
+ *   6. flash_store_t 尺寸 = 30 字节;
+ *   7. 硬件落地: 切套/整包写/上电应用后 AD5290 码值跟随(6 路并行写);
+ *   8. 强制态易失: 任何 param_init 后复位为未强制。
  * 说明: 本文件为宿主测试替身, 以桩替代 ad5290 / bsp_flash / port_tick /
  *   mylog 四个模块; 桩签名与真实头文件逐字一致。 */
 #include <stdio.h>
@@ -161,13 +163,23 @@ static void test_three_sets_isolated(void)
     param_profile_t p0 = make_profile(10,  -10,  -20);   /* 第 0 套 */
     param_profile_t p1 = make_profile(40,   30,   40);   /* 第 1 套 */
     param_profile_t p2 = make_profile(70, -100, -200);   /* 第 2 套 */
+    int             n0;                                  /* 整包写前并行写计数 */
 
     s_flash_valid = 0;
     param_init();
 
+    n0 = s_pot_all_n;
     CHECK_EQ(param_profile_set(0, &p0), 0, "set p0");
     CHECK_EQ(param_profile_set(1, &p1), 0, "set p1");
     CHECK_EQ(param_profile_set(2, &p2), 0, "set p2");
+
+    /* 整包写落在生效套(第 0 套)上, 硬件跟随: X1=11, Y1=14 */
+    CHECK_EQ(ad5290_get_code(AD5290_AXIS_X, AD5290_CH_1), 11,
+             "hw x1 follows pack write");
+    CHECK_EQ(ad5290_get_code(AD5290_AXIS_Y, AD5290_CH_1), 14,
+             "hw y1 follows pack write");
+    /* 仅生效套那一次落硬件, 且走 6 路并行写 */
+    CHECK_EQ(s_pot_all_n, n0 + 1, "one 6ch parallel write");
 
     /* 三套互不串扰 */
     CHECK_EQ(param_profile(0)->radc.x1, 11, "p0 x1");
@@ -199,6 +211,7 @@ static void test_active_and_force(void)
 {
     param_profile_t p0 = make_profile(10,  -10,  -20);   /* 第 0 套 */
     param_profile_t p1 = make_profile(40,   30,   40);   /* 第 1 套 */
+    int             n0;                                  /* 切套前并行写计数 */
 
     s_flash_valid = 0;
     param_init();
@@ -207,16 +220,27 @@ static void test_active_and_force(void)
     param_profile_set(1, &p1);
 
     /* 自主生效套 */
+    n0 = s_pot_all_n;
     param_active_set(1);
     CHECK_EQ(param_active(), 1, "active 1");
     CHECK_EQ(param_forced(), PARAM_PROFILE_NONE, "not forced");
     CHECK_EQ(param_radc_get().x1, 41, "radc follows active");
     CHECK_EQ(param_comp()->x, 30, "comp follows active");
+    /* 切套落地到硬件: 该套 X 第 1 路码值 = 41 */
+    CHECK_EQ(ad5290_get_code(AD5290_AXIS_X, AD5290_CH_1), 41,
+             "hw x1 follows active");
+    CHECK_EQ(s_pot_all_n, n0 + 1, "switch writes 6ch in one shot");
+
+    /* 越界自主套索引: 忽略, 当前生效索引不变 */
+    param_active_set(PARAM_PROFILE_NUM);
+    CHECK_EQ(param_active(), 1, "active idx too big ignored");
 
     /* 强制优先 */
     CHECK_EQ(param_force_set(0), 0, "force 0");
     CHECK_EQ(param_forced(), 0, "forced 0");
     CHECK_EQ(param_radc_get().x1, 11, "radc follows forced");
+    CHECK_EQ(ad5290_get_code(AD5290_AXIS_X, AD5290_CH_1), 11,
+             "hw x1 follows forced");
 
     /* 强制期间改自主套不生效 */
     param_active_set(1);
@@ -226,6 +250,8 @@ static void test_active_and_force(void)
     CHECK_EQ(param_force_clear(), 0, "clear");
     CHECK_EQ(param_forced(), PARAM_PROFILE_NONE, "cleared");
     CHECK_EQ(param_radc_get().x1, 41, "back to active");
+    CHECK_EQ(ad5290_get_code(AD5290_AXIS_X, AD5290_CH_1), 41,
+             "hw back to active");
 
     /* 越界强制拒收 */
     CHECK_EQ(param_force_set(PARAM_PROFILE_NUM), -1, "force idx too big");
@@ -261,6 +287,64 @@ static void test_write_goes_to_effective_set(void)
     CHECK_EQ(param_set_comp_x(9999), -1, "comp out of range");
 }
 
+/* 阈值边界(规范 8-2【必须】): 端点含、端外拒/回退 */
+static void test_comp_boundary(void)
+{
+    param_profile_t p;   /* 整包写用的一套配置 */
+
+    s_flash_valid = 0;
+    param_init();
+
+    /* 单点 setter: [COMP_VALUE_MIN, COMP_VALUE_MAX] = [-2000, 2000] 含端点 */
+    CHECK_EQ(param_set_comp_x(2000), 0, "comp x max accepted");
+    CHECK_EQ(param_set_comp_x(2001), -1, "comp x max+1 rejected");
+    CHECK_EQ(param_set_comp_x(-2000), 0, "comp x min accepted");
+    CHECK_EQ(param_set_comp_x(-2001), -1, "comp x min-1 rejected");
+    CHECK_EQ(param_set_comp_y(2000), 0, "comp y max accepted");
+    CHECK_EQ(param_set_comp_y(2001), -1, "comp y max+1 rejected");
+    CHECK_EQ(param_set_comp_y(-2000), 0, "comp y min accepted");
+    CHECK_EQ(param_set_comp_y(-2001), -1, "comp y min-1 rejected");
+
+    /* 整包写端点: 不被回退默认(param.c 私有宏 PARAM_DEF_COMP = -80) */
+    p = make_profile(10, 2000, 0);
+    CHECK_EQ(param_profile_set(0, &p), 0, "pack write x=2000");
+    CHECK_EQ(param_profile(0)->comp.x, 2000, "x=2000 kept");
+    p = make_profile(10, -2000, 0);
+    CHECK_EQ(param_profile_set(0, &p), 0, "pack write x=-2000");
+    CHECK_EQ(param_profile(0)->comp.x, -2000, "x=-2000 kept");
+
+    /* 整包写端外: 双字段整体回退默认 */
+    p = make_profile(10, 2001, 0);
+    CHECK_EQ(param_profile_set(0, &p), 0, "pack write x=2001");
+    CHECK_EQ(param_profile(0)->comp.x, -80, "x=2001 fallback");
+    CHECK_EQ(param_profile(0)->comp.y, -80, "y also fallback");
+    p = make_profile(10, -2001, 0);
+    CHECK_EQ(param_profile_set(0, &p), 0, "pack write x=-2001");
+    CHECK_EQ(param_profile(0)->comp.x, -80, "x=-2001 fallback");
+}
+
+/* 上电应用: param_init 后硬件确已写入该套码值 */
+static void test_init_applies_hardware(void)
+{
+    int n0;   /* 第二次 init 前的 6 路并行写计数 */
+
+    s_flash_valid = 0;
+    param_init();
+
+    /* param.c 私有默认码值: PARAM_DEF_X1=40 / Y1=40 / X3=45 */
+    CHECK_EQ(ad5290_get_code(AD5290_AXIS_X, AD5290_CH_1), 40,
+             "init hw x1");
+    CHECK_EQ(ad5290_get_code(AD5290_AXIS_Y, AD5290_CH_1), 40,
+             "init hw y1");
+    CHECK_EQ(ad5290_get_code(AD5290_AXIS_X, AD5290_CH_3), 45,
+             "init hw x3");
+
+    /* 上电应用走 6 路并行写(而非逐路), 证明硬件确被写入 */
+    n0 = s_pot_all_n;
+    param_init();
+    CHECK_EQ(s_pot_all_n, n0 + 1, "init applies via one 6ch write");
+}
+
 static void test_save_and_load(void)
 {
     param_profile_t p0 = make_profile(10,  -10,  -20);   /* 第 0 套 */
@@ -284,6 +368,12 @@ static void test_save_and_load(void)
     s_flash_len = 10;      /* 模拟旧版 10 字节布局 */
     param_init();
     CHECK_EQ(param_profile(0)->radc.x1, 40, "old layout -> default");
+
+    /* 强制态为易失态, 不落 flash: 任何 param_init 后复位(contract) */
+    (void)param_force_set(2);
+    CHECK_EQ(param_forced(), 2, "forced before reinit");
+    param_init();
+    CHECK_EQ(param_forced(), PARAM_PROFILE_NONE, "init resets forced");
 }
 
 int main(void)
@@ -293,6 +383,8 @@ int main(void)
     test_comp_range_and_default();
     test_active_and_force();
     test_write_goes_to_effective_set();
+    test_comp_boundary();
+    test_init_applies_hardware();
     test_save_and_load();
 
     printf("param: %d passed, %d failed\n", s_pass, s_fail);

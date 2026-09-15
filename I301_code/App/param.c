@@ -3,8 +3,9 @@
  *   = 强制优先于自主: s_forced != PARAM_PROFILE_NONE 时取强制套, 否则取
  *   s_active。既有读写接口一律作用于生效套。
  * 封装: s_store/s_active/s_forced/s_eff/s_comp 为模块私有(static), 写方
- *   收敛于本文件(param_init 加载 / 套切换 / setter 协议写), 范围校验收敛
- *   于 param_profile_set 与 setter; ISR 经 param_comp() 只读指针直读。
+ *   收敛于本文件(param_init 加载 / 套切换 / setter 协议写); 整包写与加载
+ *   的 comp 范围校验收敛于 comp_checked, 单点 setter 越界拒收仍在原位;
+ *   ISR 经 param_comp() 只读指针直读。
  * 上下游: main.c 按启动序列调用; 协议层经 param.h 接口读写;
  *   ISR 只读 comp(见 ad_da_alg.c 线性算法)。
  * 2026-09-02 重构: 去 HAL(延时经 port_tick); bsp_flash 改不透明
@@ -57,6 +58,25 @@ void ad5290_set_init(void)
 #define PARAM_DEF_Y2   80
 #define PARAM_DEF_Y3   45
 #define PARAM_DEF_COMP (-80)   /* 偏置补偿默认值(承自原仓库) */
+
+/* comp_checked —— 单套 comp 范围一致性检查与整体回退
+ * 目的: 把"comp 越界即整体双字段回退默认并告警"的策略收敛到单点, 供
+ *   整包写与上电加载两条路径共用(规范 10-2)。
+ * 输入: c —— 指向待检查的一套配置的 comp 字段; 调用方保证非 NULL。
+ * 输出: 越界时整体改写 c->x 与 c->y 为 PARAM_DEF_COMP; 在域内则不动。
+ * 返回值: 无。
+ * 调用关系: param_profile_set / param_init 内部调用(本文件私有)。
+ * 副作用: 可能写 *c 两个字段并输出一条 ERROR 日志。 */
+static void comp_checked(comp_value_t *c)
+{
+    if ((c->x < COMP_VALUE_MIN) || (c->x > COMP_VALUE_MAX) ||
+        (c->y < COMP_VALUE_MIN) || (c->y > COMP_VALUE_MAX))
+    {
+        c->x = PARAM_DEF_COMP;
+        c->y = PARAM_DEF_COMP;
+        LOG_SYS_ERROR("param comp out of range, fallback default");
+    }
+}
 
 /* param_apply —— 把第 idx 套应用到硬件与 ISR 镜像
  * 目的: 套切换或整包写后, 让 s_eff/s_comp/硬件码值与新套保持一致。
@@ -192,11 +212,12 @@ uint8_t param_forced(void)
     return s_forced;
 }
 
-/* param_profile —— 取指定套的只读快照
+/* param_profile —— 取指定套的只读视图
  * 目的: 供协议层全量回读三套配置。
  * 输入: idx —— 套索引。
  * 输出: 无。
- * 返回值: 指向 s_store 中该套的只读指针; idx 越界返 NULL。
+ * 返回值: 指向 s_store 中该套的只读指针(内部存储活视图, 非拷贝; 调用方
+ *   不得跨写操作持有); idx 越界返 NULL。
  * 调用关系: 协议层经 param.h 调用。
  * 副作用: 无(只读 s_store)。 */
 const param_profile_t *param_profile(uint8_t idx)
@@ -228,15 +249,7 @@ int param_profile_set(uint8_t idx, const param_profile_t *p)
     s_store.sets[idx] = *p;
 
     /* comp 一致性检查: 越界整体回退默认(规范 10-2) */
-    if ((s_store.sets[idx].comp.x < COMP_VALUE_MIN) ||
-        (s_store.sets[idx].comp.x > COMP_VALUE_MAX) ||
-        (s_store.sets[idx].comp.y < COMP_VALUE_MIN) ||
-        (s_store.sets[idx].comp.y > COMP_VALUE_MAX))
-    {
-        s_store.sets[idx].comp.x = PARAM_DEF_COMP;
-        s_store.sets[idx].comp.y = PARAM_DEF_COMP;
-        LOG_SYS_ERROR("param profile comp out of range, fallback default");
-    }
+    comp_checked(&s_store.sets[idx].comp);
 
     /* 若写的正是生效套, 同步应用 */
     if (idx == s_eff)
@@ -321,15 +334,7 @@ void param_init(void)
         /* 逐套 comp 范围一致性检查: 越界回退默认 */
         for (i = 0U; i < PARAM_PROFILE_NUM; i++)
         {
-            if ((s_store.sets[i].comp.x < COMP_VALUE_MIN) ||
-                (s_store.sets[i].comp.x > COMP_VALUE_MAX) ||
-                (s_store.sets[i].comp.y < COMP_VALUE_MIN) ||
-                (s_store.sets[i].comp.y > COMP_VALUE_MAX))
-            {
-                s_store.sets[i].comp.x = PARAM_DEF_COMP;
-                s_store.sets[i].comp.y = PARAM_DEF_COMP;
-                LOG_SYS_ERROR("param comp out of range, fallback default");
-            }
+            comp_checked(&s_store.sets[i].comp);
         }
         LOG_SYS_INFO("load param from flash");
     }

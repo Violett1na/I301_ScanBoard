@@ -8,7 +8,8 @@
  *   param_radc_get/param_radc_set/param_set_comp_x/param_set_comp_y/
  *   param_comp/param_save 一律作用于当前生效套。
  * 封装: 参数实体为 param.c 私有(static), 外部仅经接口函数访问——
- *   写方单点收敛、范围校验单点收敛; ISR 经 param_comp() 只读指针
+ *   写方单点收敛; 整包写与上电加载的 comp 范围校验(越界整体回退默认)
+ *   收敛于 param.c 私有的 comp_checked; ISR 经 param_comp() 只读指针
  *   直读字段, 零开销。
  * 上下游: main.c 按启动序列调用初始化; 协议层经接口读写参数;
  *   bsp_flash 按不透明 blob 持久化(param_save 内部组装)。 */
@@ -69,10 +70,11 @@ void param_radc_set(const radc_value_t *r);    /* 写回生效套(硬件写入�
 int param_save(void);                          /* 持久化三套参数: 0 成功, -1 失败 */
 
 /* ---- 三套配置接口(索引越界一律拒收: 读接口返 NULL, 写/强制返 -1) ----
+ * param_profile 返回内部存储的只读视图(非拷贝, 不得跨写操作持有);
  * param_profile_set 为整包写, 返回 0 成功 / -1 越界或空指针;
  * param_active_set 由工况判定模块调用, 越界忽略;
  * 强制态为易失态(不落 flash), param_init 后恒为未强制。 */
-const param_profile_t *param_profile(uint8_t idx);   /* 只读快照 */
+const param_profile_t *param_profile(uint8_t idx);   /* 只读视图(内部存储) */
 int  param_profile_set(uint8_t idx, const param_profile_t *p); /* 整包写 */
 int  param_force_set(uint8_t idx);                   /* 强制到该套 */
 int  param_force_clear(void);                        /* 解除强制 */
