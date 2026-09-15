@@ -17,6 +17,7 @@
 
 #include "ls_proto.h"
 #include "ls_proto_trans.h"   /* 发送层: ls_trans_callbacks_t / ls_ctrl_* */
+#include "ls_proto_receive.h" /* 接收层: ls_receive_callbacks_t / ls_parse */
 
 /* 协议字节偏移(包头 13 字节固定长; 见 Proto/Src/ls_proto.c 的 ls_pack 写入顺序)
  *   [0,12]  包头字符串 LIGHTSPACE-XY
@@ -337,6 +338,200 @@ static void test_send_base_reply_all(void)
     CHECK_EQ(out.data[23], 0xB0, "p1 comp_x lo");
 }
 
+/* ---- 接收回调桩 ---- */
+static ls_ctrl_set_profile_t s_rx_set_profile;  /* 最近一次收到的写套载荷 */
+static int  s_rx_set_profile_n   = 0;           /* 写套回调调用次数 */
+static int  s_rx_set_profile_ret = 0;           /* 写套回调返回值桩 */
+
+static int stub_ctrl_set_profile(const ls_ctrl_set_profile_t *m)
+{
+    s_rx_set_profile = *m;
+    s_rx_set_profile_n++;
+    return s_rx_set_profile_ret;
+}
+
+static int s_rx_get_all_n = 0;  /* 全量回读请求回调调用次数 */
+static int stub_ctrl_get_all(void) { s_rx_get_all_n++; return 0; }
+
+static ls_ctrl_force_t s_rx_force;  /* 最近一次收到的强制套载荷 */
+static int s_rx_force_n = 0;        /* 强制套回调调用次数 */
+static int stub_ctrl_force_profile(const ls_ctrl_force_t *m)
+{
+    s_rx_force = *m;
+    s_rx_force_n++;
+    return 0;
+}
+
+static ls_all_reply_t s_rx_all;  /* 最近一次收到的全量回包 */
+static int s_rx_all_n = 0;       /* 全量回包回调调用次数 */
+static void stub_on_reply_all(const ls_all_reply_t *r)
+{
+    s_rx_all = *r;
+    s_rx_all_n++;
+}
+
+/* 造一个可被 ls_parse 解析的整包 */
+static uint16_t make_packet(uint16_t typeCmd, const void *payload,
+                            uint16_t payload_len, uint8_t *buf)
+{
+    ls_packet_t pkt;    /* 待打包的包体：类型/命令字/载荷 */
+    uint16_t len = 0;   /* 打包后的字节流长度 */
+
+    memset(&pkt, 0, sizeof(pkt));
+    pkt.type     = (uint8_t)(typeCmd >> 8);
+    pkt.cmd      = (uint8_t)(typeCmd & 0xFF);
+    pkt.data_len = payload_len;
+    if (payload_len > 0U)
+    {
+        memcpy(pkt.data, payload, payload_len);
+    }
+    pkt.pck_len  = LS_DATA_BASE_LEN + payload_len;
+
+    CHECK_EQ(ls_pack(&pkt, buf, &len), 0, "make_packet pack");
+    return len;
+}
+
+/* 接收层 0x0305: 载荷解析(含大端补偿值)、回调下发与控制应答 */
+static void test_handle_set_profile(void)
+{
+    ls_packet_t pkt;   /* 声明于外侧会被下面复用, 便于逐分支校验 */
+
+    /* 先初始化发送桩, 否则 ls_ctrl_reply 无法发出 */
+    static const ls_trans_callbacks_t t_cbs = { .send = stub_send };
+    ls_trans_init_callbacks(&t_cbs);
+
+    static const ls_receive_callbacks_t r_cbs = {
+        .ctrl_set_profile = stub_ctrl_set_profile,
+    };
+    ls_receiver_init_callbacks(&r_cbs);
+
+    /* 造一个设备侧会收到的写配置包: 载荷为【大端】comp */
+    ls_ctrl_set_profile_t in;   /* 待发载荷：套号 2 + 码值 + 大端补偿值 */
+
+    memset(&in, 0, sizeof(in));
+    in.profile  = 2;
+    in.data.radc[0] = 11;
+    in.data.radc[5] = 66;
+    in.data.comp_x  = (int16_t)ls_swap_endian_16((uint16_t)(int16_t)(-80));
+    in.data.comp_y  = (int16_t)ls_swap_endian_16((uint16_t)(int16_t)1234);
+
+    uint8_t buf[256];   /* 打包后的待解析字节流 */
+    uint16_t len = make_packet(LS_CTRL_SET_PROFILE, &in, sizeof(in), buf);
+
+    s_rx_set_profile_n = 0;
+    reset_tx();
+    CHECK_EQ(ls_parse(&pkt, buf, len), 0, "parse set_profile");
+    CHECK_EQ(s_rx_set_profile_n, 1, "callback invoked");
+    CHECK_EQ(s_rx_set_profile.profile, 2, "parsed profile");
+    CHECK_EQ(s_rx_set_profile.data.radc[0], 11, "parsed radc x1");
+    CHECK_EQ(s_rx_set_profile.data.radc[5], 66, "parsed radc y3");
+    CHECK_EQ(s_rx_set_profile.data.comp_x, -80,  "parsed comp_x (endian)");
+    CHECK_EQ(s_rx_set_profile.data.comp_y, 1234, "parsed comp_y (endian)");
+    /* 回送控制应答 */
+    CHECK_EQ(s_tx_count, 1, "acked once");
+
+    /* 长度不符 → 拒收且不回调 */
+    s_rx_set_profile_n = 0;
+    len = make_packet(LS_CTRL_SET_PROFILE, &in, sizeof(in) - 1U, buf);
+    CHECK_EQ(ls_parse(&pkt, buf, len), -1, "short payload rejected");
+    CHECK_EQ(s_rx_set_profile_n, 0, "no callback on bad len");
+}
+
+/* 接收层 0x0306/0x0307: 全量回读(应答+全量包两帧)与强制套/解除 */
+static void test_handle_get_all_and_force(void)
+{
+    static const ls_trans_callbacks_t t_cbs = {
+        .send                = stub_send,
+        .get_device_info_all = stub_get_device_info_all,
+    };
+    ls_trans_init_callbacks(&t_cbs);
+
+    static const ls_receive_callbacks_t r_cbs = {
+        .ctrl_get_all      = stub_ctrl_get_all,
+        .ctrl_force_profile = stub_ctrl_force_profile,
+    };
+    ls_receiver_init_callbacks(&r_cbs);
+
+    ls_packet_t pkt;    /* 复用：解析入包与解包发出的帧 */
+    uint8_t buf[256];   /* 打包后的待解析字节流 */
+    uint16_t len;       /* 当前帧长度 */
+
+    /* 0x0306 → 控制应答 + 全量回复, 共两包 */
+    ls_ctrl_get_all_t req;  /* 回读请求载荷：占位 0xFF */
+
+    req.req = 0xFF;
+    memset(&s_stub_all, 0, sizeof(s_stub_all));
+    s_stub_all.active_profile = 1;
+    s_stub_all.profiles[1].radc[0] = 120;
+
+    len = make_packet(LS_CTRL_GET_ALL, &req, sizeof(req), buf);
+    s_rx_get_all_n = 0;
+    reset_tx();
+    CHECK_EQ(ls_parse(&pkt, buf, len), 0, "parse get_all");
+    CHECK_EQ(s_rx_get_all_n, 1, "get_all callback");
+    CHECK_EQ(s_tx_count, 2, "acked + full reply");
+    CHECK_EQ(tx_unpack(&pkt), 0, "second packet unpack");
+    CHECK_EQ(pkt.cmd, (uint8_t)(LS_BASE_REPLY_ALL & 0xFF),
+             "second is reply_all");
+    CHECK_EQ(pkt.data[4], 1, "active in reply_all");
+    CHECK_EQ(pkt.data[16], 120, "p1 radc x1 in reply_all");
+
+    /* 0x0307 强制 */
+    ls_ctrl_force_t fo;     /* 强制套载荷：目标套号 */
+
+    fo.profile = 2;
+    len = make_packet(LS_CTRL_FORCE_PROFILE, &fo, sizeof(fo), buf);
+    s_rx_force_n = 0;
+    CHECK_EQ(ls_parse(&pkt, buf, len), 0, "parse force");
+    CHECK_EQ(s_rx_force_n, 1, "force callback");
+    CHECK_EQ(s_rx_force.profile, 2, "parsed force profile");
+
+    /* 0x0307 解除 */
+    fo.profile = LS_PROFILE_NONE;
+    len = make_packet(LS_CTRL_FORCE_PROFILE, &fo, sizeof(fo), buf);
+    CHECK_EQ(ls_parse(&pkt, buf, len), 0, "parse force release");
+    CHECK_EQ(s_rx_force.profile, LS_PROFILE_NONE, "parsed release");
+}
+
+/* 接收层 0x0104: 全量回包解出设备信息/工况/三套配置(补偿值大端还原) */
+static void test_handle_base_reply_all(void)
+{
+    static const ls_trans_callbacks_t t_cbs = { .send = stub_send };
+    ls_trans_init_callbacks(&t_cbs);
+
+    static const ls_receive_callbacks_t r_cbs = {
+        .on_reply_all = stub_on_reply_all,
+    };
+    ls_receiver_init_callbacks(&r_cbs);
+
+    /* 主机侧收到的是【大端】载荷 */
+    ls_all_reply_t in;  /* 待发全量回包：大端设备信息与各套配置 */
+
+    memset(&in, 0, sizeof(in));
+    in.device_id      = ls_swap_endian_16(0x1234);
+    in.device_version = ls_swap_endian_16(0x5678);
+    in.active_profile = 1;
+    in.forced_profile = 2;
+    in.profiles[0].radc[0] = 40;
+    in.profiles[2].comp_y  =
+        (int16_t)ls_swap_endian_16((uint16_t)(int16_t)(-95));
+
+    ls_packet_t pkt;    /* 解析结果包 */
+    uint8_t buf[256];   /* 打包后的待解析字节流 */
+    uint16_t len = make_packet(LS_BASE_REPLY_ALL, &in, sizeof(in), buf);
+
+    s_rx_all_n = 0;
+    CHECK_EQ(ls_parse(&pkt, buf, len), 0, "parse reply_all");
+    CHECK_EQ(s_rx_all_n, 1, "on_reply_all invoked");
+    CHECK_EQ(s_rx_all.device_id, 0x1234, "parsed device_id (endian)");
+    CHECK_EQ(s_rx_all.device_version, 0x5678,
+             "parsed device_version (endian)");
+    CHECK_EQ(s_rx_all.active_profile, 1, "parsed active");
+    CHECK_EQ(s_rx_all.forced_profile, 2, "parsed forced");
+    CHECK_EQ(s_rx_all.profiles[0].radc[0], 40, "parsed p0 radc x1");
+    CHECK_EQ(s_rx_all.profiles[2].comp_y, -95, "parsed p2 comp_y (endian)");
+}
+
 int main(void)
 {
     test_crc16();
@@ -347,6 +542,9 @@ int main(void)
     test_send_set_profile();
     test_send_get_all_and_force();
     test_send_base_reply_all();
+    test_handle_set_profile();
+    test_handle_get_all_and_force();
+    test_handle_base_reply_all();
 
     printf("ls_proto: %d passed, %d failed\n", s_pass, s_fail);
     return (s_fail == 0) ? 0 : 1;
