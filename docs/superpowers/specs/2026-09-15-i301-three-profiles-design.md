@@ -1,8 +1,8 @@
 # I301 三套配置（振镜 30kHz 大角度 / 40kHz 小角度 / 过流降速）设计规格
 
 - 日期：2026-09-15
-- 版本：2026-09-15-B（**自动下发改为「编辑即强制」**，否决原守卫方案；新增 §0 决策记录表；原 A 版为首次成文）
-- 状态：设计已确认（用户 2026-09-15 逐节认可），待转 writing-plans
+- 版本：2026-09-16-A（**强制后必向设备回读**；`active_profile` 语义定案为恒取自主判定，消解 §4.2/§6.3 原文矛盾。前一版 2026-09-15-B 为「编辑即强制」版，A 版为首次成文）
+- 状态：设计已确认（用户 2026-09-15 逐节认可；2026-09-16 修订 §5.2/§5.4/§5.5/§6.3/§7.2）；下位机侧计划执行中
 - 涉及仓库：
   - 上位机 `USB_I301_QT/scan_setting`（Qt 6 工具，本 spec 的宿主仓库之一）
   - 下位机 `I301_code-ad-da`（I301 振镜 XY 板固件）
@@ -36,6 +36,9 @@
 | 12 | 强制套安全边界 | 设备侧 **5s 超时自解除**；强制态**不落 flash** | §6.1 / §6.2 |
 | 13 | 旧布局兼容 | **一次性回退默认**，不写迁移码 | §3.3；项目既有先例（`bsp_flash.c` 头注释） |
 | 14 | spec 存放 | 两仓各一份，标日期与版本号，**以较新者为准** | 本文元数据 |
+| 15 | 点选套后的界面取值 | **强制后必向设备回读**（发 `0x0307` 后紧接 `0x0306`，界面值只信设备回包） | §5.4 #3；2026-09-16 用户确认 |
+| 16 | `active_profile` 字段语义 | **恒为自主判定结果**；生效套由上位机自算 `forced != 0xFF ? forced : active` | §4.2 / §6.3；2026-09-16 消解原文自相矛盾 |
+| 17 | 配置读写是否落 flash | **实时下发只进内存**（`s_store`）；**仅 `0x0304` 落 flash** | §3.5；2026-09-16 用户关切，经代码核实已如此 |
 
 ---
 
@@ -245,6 +248,24 @@ int  param_save(void);                                          /* 整块持久�
 
 `param_comp()` 的 ISR 只读语义**保持不变**——它返回的是**当前生效套**的 comp。
 
+### 3.5 flash 擦写纪律（2026-09-16 核实）
+
+**结论：实时操作一律只进内存，`0x0304` 是唯一的落 flash 入口。**
+
+用户 2026-09-16 提出「频繁操作 Flash 会导致 Flash 迅速老化」的关切。经代码核实，现行设计已在**结构上**排除该风险，不是靠约定：
+
+| 事实 | 位置 |
+|---|---|
+| 全固件 RAM→Flash 写口**只有一处** | `param.c` `param_save()` → `bsp_flash_save()` |
+| 它的**唯一**调用者 = `0x0304` 回调 | `ls_proto_device_app.c` 的 `ctrl_save_param` |
+| Flash→RAM 读口也只有一处，开机一次 | `param.c` `param_init()` → `bsp_flash_load()` |
+| 实时微调（`0x0302`）只写 `s_store.sets[s_eff].radc` | `param.c` `param_radc_set()`，函数头明写"本函数不碰硬件" |
+| 整包写（`0x0305`）只写 `s_store.sets[idx]` | `param.c` `param_profile_set()`，**无 flash 调用** |
+
+三套配置常驻内存（`s_store`，30B），开机由 `param_init()` 从 flash 载入一次；此后所有编辑、实时下发、强制切换均在内存中进行。
+
+**因此 flash 擦写次数 = 用户点「保存数据💾」的次数**，不存在"拖一次滑块擦一次 flash"的路径。该纪律由 `param.c` 写方单点收敛（规范 13-1）保证：**任何新增写入路径若绕过 `param_save()`，即为违规。**
+
 ---
 
 ## 4 协议契约
@@ -391,7 +412,7 @@ typedef struct
 
 **理由**：控件数量不变（仍 8 个 `QSpinBox`），窗口尺寸几乎不变，对现有代码改动最小；代价是看不到三套横向差异——但强制标定模式下注意力本就集中在单套上，可接受。
 
-**关键语义：套选 radio 即强制开关。** 点选某套 = 把设备强制切到该套（发 `0x0307 {n}`），此后改值立刻作用于硬件（见 §5.5）。
+**关键语义：套选 radio 即强制开关。** 点选某套 = 把设备强制切到该套（发 `0x0307 {n}`）**并紧接一次 `0x0306` 读回**（界面值只信设备回包，见 §5.4 #3），此后改值立刻作用于硬件（见 §5.5）。
 
 **新增控件**：
 
@@ -421,8 +442,8 @@ QTimer   *m_keepAliveTimer = nullptr; /* 强制模式保活 */
 | # | 触发 | 行为 |
 |---|---|---|
 | 1 | 点「连接设备」 | `m_usb->init()` → `ls_host_app_init()` → `ls_base_query()`（现有）→ `ls_ctrl_get_all()` |
-| 2 | 收到 `0x0104` | 存 `m_profiles` / `m_activeProfile` / `m_forcedProfile`；`m_editProfile = m_activeProfile`（radio 跟随设备实际生效套，**连接本身不强制、不扰动设备**）；`m_loading` 包裹下把 `m_profiles[m_editProfile]` 刷进 8 个 spinbox；刷新 `label_state` |
-| 3 | 点套选 radio | `m_editProfile = n`；发 `ls_ctrl_force_profile(n)` 把设备强制切到该套，并启动 1s 保活；`m_loading` 包裹下刷新 spinbox |
+| 2 | 收到 `0x0104` | 存 `m_profiles` / `m_activeProfile` / `m_forcedProfile`；`m_editProfile = (m_forcedProfile != 0xFF) ? m_forcedProfile : m_activeProfile`（radio 跟随**设备实际生效套**，见 §6.3；**连接本身不强制、不扰动设备**）；`m_loading` 包裹下把 `m_profiles[m_editProfile]` 刷进 8 个 spinbox；刷新 `label_state` |
+| 3 | 点套选 radio | `m_editProfile = n`；发 `ls_ctrl_force_profile(n)` 把设备强制切到该套，**紧接着发 `ls_ctrl_get_all()`**，并启动 1s 保活；**界面等 `0x0104` 回包再刷新**——不由本地缓存刷，回包到达前保持旧值 |
 | 4 | spinbox 值变 | `m_loading` 为真则直接返回；否则：① 更新 `m_profiles[m_editProfile]`；② 若 `m_forcedProfile == 0xFF`（尚未强制，如刚连上还没点过 radio）**先补发 `ls_ctrl_force_profile(m_editProfile)`**；③ 立刻下发 `0x0302` / `0x0303`——**与改造前手感完全一致** |
 | 5 | 点「写入选中的套」 | `ls_ctrl_set_profile(m_editProfile, ...)` 一包 → 随后自动 `ls_ctrl_get_all()` 核对 |
 | 6 | 点「从设备读回」 | `ls_ctrl_get_all()` |
@@ -447,8 +468,8 @@ QTimer   *m_keepAliveTimer = nullptr; /* 强制模式保活 */
 
 | 时机 | 动作 |
 |---|---|
-| 连接 + 读回 | `m_editProfile = m_activeProfile`（radio 跟随设备实际生效套），**不强制、不扰动** |
-| 点套选 radio | 发 `0x0307 {n}` 强制切到该套 |
+| 连接 + 读回 | `m_editProfile = (m_forcedProfile != 0xFF) ? m_forcedProfile : m_activeProfile`（radio 跟随设备实际生效套），**不强制、不扰动** |
+| 点套选 radio | 发 `0x0307 {n}` 强制切到该套，紧接 `0x0306` 读回并用回包刷界面（§5.4 #3） |
 | 改值前若尚未强制 | 先补发 `0x0307 {m_editProfile}`，再下发值 |
 | 点「回自主」/ 断开 / 超时 | 不变量解除，设备回自主判定（§6.1） |
 
@@ -484,12 +505,22 @@ int   digit = name.at(name.length() - 1).digitValue();
 
 ### 6.3 上报语义
 
-强制期间，`0x0104` 的回复中：
+`0x0104` 的回复中，两个字段**职责不重叠**：
 
-- `active_profile` = **强制套**（因为设备此刻确实在用强制套）
-- `forced_profile` = 强制套索引（非 `0xFF`）
+- `active_profile` = **自主判定结果**（恒为判定模块输出，与 §4.2 一致）；强制期间它**不代表**当前生效套
+- `forced_profile` = 强制套索引；`0xFF` 表示未强制
 
-上位机据此把标签显示为 `过流降速(强制)`。
+**生效套由上位机自算**：
+
+```cpp
+uint8_t effective = (m_forcedProfile != 0xFF) ? m_forcedProfile : m_activeProfile;
+```
+
+标签渲染**只看 `forced_profile`**：非 `0xFF` → `过流降速(强制)`；为 `0xFF` → `40k小角度(自主)`。
+
+**为什么不让设备把 `active_profile` 填成强制套**（2026-09-16 用户裁决）：强制是瞬态、自主判定是设备侧真值。两者混填进同一字段，会让「设备此刻自主判到哪套」**永久不可观测**——而这正是 §8 开放项 O4（下位机工况判定）落地后唯一要标定的量。代价是上位机多一行自算逻辑，换来设备侧状态机保持单一职责。
+
+> 本节原措辞为「强制期间 `active_profile` = 强制套」，与 §4.2 字段注释直接冲突。2026-09-16 裁决以 §4.2 为准，本节据此改写。
 
 ### 6.4 越界与失败
 
@@ -523,6 +554,7 @@ int   digit = name.at(name.length() - 1).digitValue();
 | 6 | 点「回自主」 | 标签回到 `(自主)`，设备恢复自主判定 |
 | 7 | 保持强制 → 拔掉 USB → 等 5s | 下位机日志确认强制已自动解除、回自主判定 |
 | 8 | 强制中 → 点「断开设备」 | 设备立即回自主（无需等超时） |
+| 9 | 点选任一套后的**取值来源**（§5.4 #3） | RX 日志中紧接出现 `0x0306` 请求与 `0x0104` 全量回复；spinbox 在**回包到达后**才更新——证明界面值取自设备而非本地缓存 |
 
 ### 7.3 上位机测试设施现状
 
