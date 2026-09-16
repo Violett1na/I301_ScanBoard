@@ -8,19 +8,34 @@
 
 **Tech Stack:** C99、STM32G474 固件（四层架构：App / Bsp / Port / Platform）、宿主单测走 MinGW gcc。
 
-**上游 spec:** `docs/superpowers/specs/2026-09-15-i301-three-profiles-design.md`（版本 2026-09-15-B）
+**上游 spec:** `docs/superpowers/specs/2026-09-15-i301-three-profiles-design.md`（版本 2026-09-16-B）
+
+> ⚠️ **本计划已执行完毕，且被 2026-09-16 的整改部分取代——照着本计划重跑会原样重现已修复的缺陷。**
+> 进度与最终结论见 `.superpowers/sdd/progress.md`。以下三处**不要照抄**：
+>
+> 1. **Task 4 的 `0x0306` 测试块** —— `CHECK_EQ(s_tx_count, 2, "acked + full reply")` 等断言已过时。`0x0306` 现**只回 `0x0104` 一帧**，不再回 `0x0301` 应答（spec §4.5 例外）。
+> 2. **Task 6 开头的「本 Task 无宿主单测」** —— Task 7 整改轮已为该文件的 `ls_app_force_watchdog_poll()` 补了桩测试（`tests/ls_force_wd/test_force_release.c`）。
+> 3. **Task 7 Step 1 的注释块** —— 其中 `(Step 1)` 属计划元数据，落码时已删除。
+>
+> 缘由（整支评审发现 C1）：设备发送通路**忙即拒发、不排队**，同一趟主循环内发两帧时第二帧必被丢弃。**任何 handler 不得在同一趟主循环内发两帧**——这是通则，不是 `0x0306` 一处的修补。
 
 ## Global Constraints
 
 - **语言**：代码注释、日志、提交信息一律简体中文（项目规范 0-2）。
 - **缩进**：4 空格，禁用 TAB（项目规范 1-2）。
-- **命名族**：用户层小写 snake_case，函数名中缩写小写（`ls_ctrl_set_profile`）；宏全大写（`LS_CTRL_SET_PROFILE`）；类型小写 + `_t` 后缀（项目规范 3-8/3-9）。
+- **行宽**：< 80 字符（项目规范 1-4）。**计划代码块中的示例若超出此宽，落码时按低优先级操作符换行、操作符置于新行之首——行宽是硬约束，示例不是。**
+- **对齐排版**：连续同类赋值 `=` 纵向同列（项目规范 1-6）。
+- **构建链**：正式构建链是 **VS Code EIDE**，配置在 `I301_code/MDK-ARM/.eide/eide.yml`——**不是** Keil `uvprojx`（后者为历史临时产物，已还原）。优化等级须为 `level-2`，不得降级（项目规范 9-3）。
+- **硬件前置**：上板验证前 **JP3 必须断开**（项目规范 0-3 与附录 A 现行约束速览）。
+- **命名族**：用户层小写 snake_case，函数名中缩写小写（`ls_ctrl_set_profile`）；宏全大写（`LS_CTRL_SET_PROFILE`）；类型小写 + `_t` 后缀（项目规范 3-7/3-8）。
 - **分层**：协议层不得 include App 层 `param.h`（规范 13-3）；`param` 实体保持 `static` 私有，写方单点收敛（规范 13-1）。
 - **大小端**：`radc[6]` 单字节不转换；`comp_x`/`comp_y`/`device_id`/`device_version` 为多字节，须经 `ls_swap_endian_16()` 转换（沿用现有 `LS_ENDIAN_ENABLE` / `LS_RX_ENDIAN_ENABLE` 开关）。
 - **尺寸**：`flash_store_t` = 30 字节，必须 ≤ `BSP_FLASH_DATA_MAX`(32)；`param_flash_fit_check` 编译期校验必须保持通过。
-- **测试命令**：`gcc` 位于 `/c/Qt/Tools/mingw1310_64/bin/gcc.exe`（不在 PATH，需全路径）。测试运行方式沿用既有先例：仓库根执行 `sh tests/<模块>/run.sh`。
+- **测试命令**：沿用既有先例，仓库根执行 `sh tests/<模块>/run.sh`；`run.sh` 内用 `GCC="${GCC:-gcc}"`（项目规范 8-1 指定宿主单测走 WSL gcc）。**本机 git-bash 的 PATH 里没有 gcc**，实际执行时用环境变量覆盖：
+  `GCC=/c/Qt/Tools/mingw1310_64/bin/gcc.exe sh tests/<模块>/run.sh`
+  （或在 WSL 内直接 `sh tests/<模块>/run.sh`）。
 - **⭐ 提交须授权**：项目规范 11-10 要求每次 git 提交的粒度与信息经用户批准。**每个 Task 末尾的 commit 步骤执行前必须先向用户出示提交信息并获批**，不得自行提交。
-- **⭐ 编译/烧录须授权**：项目 AGENTS.md 规定 AI 不得自行进入编译/运行/部署；固件编译（Keil MDK）与烧录由用户执行（规范 8-6）。本计划的宿主单测（gcc）可自行运行。
+- **⭐ 编译/烧录须授权**：项目规范 0-3 与 AGENTS.md 规定 AI 不得自行进入编译/运行/部署；固件编译（VS Code EIDE）与烧录由用户执行（规范 8-6）。本计划的宿主单测（gcc）可自行运行。
 - **⭐ 协议双仓镜像**：`Proto/` 下的 `ls_proto*.c/h` 在上位机仓库 `USB_I301_QT/scan_setting/usb_i301/Proto/` 另存一份。**本计划只改下位机副本**；上位机副本的同步在后续「上位机计划」中作为首个 Task 执行。
 
 ---
@@ -41,6 +56,7 @@
 | `I301_code/Core/Src/main.c` | 主循环（用户代码区） | 修改：第 146 行后加看门狗调用 |
 | `tests/ls_proto/` | 协议层宿主单测（新增） | 创建 |
 | `tests/param/` | 参数层宿主单测（新增） | 创建 |
+| `tests/ls_force_wd/` | 强制套超时判定宿主单测（新增，含 uint32 回绕） | 创建 |
 
 ---
 
@@ -67,7 +83,7 @@
 set -e
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
-GCC="${GCC:-/c/Qt/Tools/mingw1310_64/bin/gcc.exe}"
+GCC="${GCC:-gcc}"
 
 "$GCC" -std=c99 -Wall -Wextra -O2 \
     -I "$ROOT/I301_code/Proto/Inc" \
@@ -1267,7 +1283,7 @@ git commit -m "协议接收层新增整包写配置/全量回读/强制套处理
 set -e
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
-GCC="${GCC:-/c/Qt/Tools/mingw1310_64/bin/gcc.exe}"
+GCC="${GCC:-gcc}"
 
 "$GCC" -std=c99 -Wall -Wextra -O2 \
     -I "$ROOT/I301_code/App" \
@@ -1999,9 +2015,15 @@ void ls_app_init(void)
 
 - [ ] **Step 3: 固件编译（用户执行）**
 
-本项目固件用 Keil MDK 构建，AI 不得自行进入编译环节（项目 AGENTS.md）。
+本项目固件用 **VS Code EIDE** 构建（配置在 `I301_code/MDK-ARM/.eide/eide.yml`），AI 不得自行进入编译环节（项目规范 0-3、AGENTS.md）。
 
-交给用户的动作：在 `I301_code/MDK-ARM/` 打开工程并全量重编译。
+交给用户的动作：在 VS Code 中用 EIDE 全量重编译。
+
+**编译前三查（项目规范 11-2【必须】）**：
+
+1. **源文件列表** —— 本 Task 未新增固件源文件（仅改既有文件），清单应不变
+2. **优化等级** —— `eide.yml` 中须为 `level-2`，不得降级（规范 9-3）
+3. **EIDE 实例是否持旧模型** —— 若 VS Code 中有活动的 EIDE 实例，先关闭或经其界面重载工程，再改构建配置。**历史先例**：活动实例曾反复回写 `eide.yml` 删掉源文件行，导致新文件不入编译（规范 11-7）
 
 **期望结果**：0 error、0 warning（规范 11-1）。
 
@@ -2010,6 +2032,8 @@ void ls_app_init(void)
 - `param_active_set` 未声明 → 检查 Task 5 是否把该声明加进了 `param.h`
 
 - [ ] **Step 4: 上板验证（用户执行，判据见 spec §7.2）**
+
+**前置：JP3 必须断开**（项目规范 0-3 与附录 A 现行约束速览）。
 
 按 spec §7.2 的 8 项判据逐条验证。本计划交付物对应的判据：
 
@@ -2047,8 +2071,22 @@ git commit -m "设备侧胶水实现三套配置回调: 整包写/全量回读/�
 在 `I301_code/App/ls_proto_device_app.h` 中，于 `ls_app_poll()` 声明之后追加：
 
 ```c
-/* 强制套看门狗: 主循环周期调用; 超过 LS_FORCE_TIMEOUT_MS 未收到
- * 任何上位机整帧则自动解除强制(spec §6.1) */
+/* 强制套超时时长(ms): 超过该时长未收到任何上位机整帧即自动解除
+ * (spec §6.1)。暂定 5s, 待上板标定(spec §8 O3) */
+#define LS_FORCE_TIMEOUT_MS   5000U
+
+/* 强制套超时判定(纯函数, 无副作用, 不触硬件)
+ * 抽为纯函数是为了让宿主单测能覆盖 uint32 毫秒回绕——项目规范 8-2
+ * 明列"时间边界(uint32 毫秒回绕)"必测。无符号差值在回绕后仍等于
+ * 真实间隔, 不会误判。
+ * 输入: now_ms 当前时基; last_ms 最近一次收到上位机整帧的时基
+ * 返回: 1 已超时, 0 未超时 */
+static inline int ls_force_wd_expired(uint32_t now_ms, uint32_t last_ms)
+{
+    return ((uint32_t)(now_ms - last_ms) > LS_FORCE_TIMEOUT_MS) ? 1 : 0;
+}
+
+/* 强制套看门狗: 主循环周期调用; 已强制且超时则自动解除强制(spec §6.1) */
 void ls_app_force_watchdog_poll(void);
 ```
 
@@ -2074,11 +2112,8 @@ void ls_app_force_watchdog_poll(void);
 在 `app_send_data()` 之前追加超时常量与私有状态：
 
 ```c
-/* 强制套超时: 超过该时长未收到任何上位机整帧即自动解除(spec §6.1)
- * 暂定 5s, 待上板标定(spec §8 O3) */
-#define LS_FORCE_TIMEOUT_MS   5000U
-
-/* 最近一次收到上位机整帧的时基(主循环域写, 主循环域读) */
+/* 最近一次收到上位机整帧的时基(主循环域写, 主循环域读)
+ * 超时时长宏 LS_FORCE_TIMEOUT_MS 与纯函数随 .h 定义(Step 1) */
 static uint32_t s_last_host_ms;
 ```
 
@@ -2100,7 +2135,7 @@ static uint32_t s_last_host_ms;
 
 ```c
 /* 强制套看门狗: 未强制则空转; 已强制且超时则解除回自主。
- * 时基比较用无符号差值, 对 port_tick_ms 的 32 位回绕安全。 */
+ * 超时判定走纯函数 ls_force_wd_expired(回绕安全, 已被宿主单测覆盖)。 */
 void ls_app_force_watchdog_poll(void)
 {
     if (param_forced() == PARAM_PROFILE_NONE)
@@ -2108,7 +2143,7 @@ void ls_app_force_watchdog_poll(void)
         return;
     }
 
-    if ((uint32_t)(port_tick_ms() - s_last_host_ms) > LS_FORCE_TIMEOUT_MS)
+    if (ls_force_wd_expired(port_tick_ms(), s_last_host_ms) != 0)
     {
         (void)param_force_clear();
         LOG_SYS_ERROR("force profile timeout, released to auto");
@@ -2116,7 +2151,104 @@ void ls_app_force_watchdog_poll(void)
 }
 ```
 
-- [ ] **Step 3: 主循环挂钩**
+- [ ] **Step 3: 写测试（uint32 回绕为主）**
+
+创建 `tests/ls_force_wd/run.sh`：
+
+```sh
+#!/bin/sh
+# run.sh —— 强制套超时判定宿主单测(规范 8-1/8-2: uint32 回绕必测)
+# 用法: 仓库根目录执行  sh tests/ls_force_wd/run.sh
+# 本机 PATH 内无 gcc 时:
+#   GCC=/c/Qt/Tools/mingw1310_64/bin/gcc.exe sh tests/ls_force_wd/run.sh
+set -e
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
+GCC="${GCC:-gcc}"
+
+"$GCC" -std=c99 -Wall -Wextra -O2 \
+    -I "$ROOT/I301_code/App" \
+    -I "$ROOT/I301_code/Proto/Inc" \
+    "$ROOT/tests/ls_force_wd/test_ls_force_wd.c" \
+    -o "$ROOT/tests/ls_force_wd/test_ls_force_wd"
+
+"$ROOT/tests/ls_force_wd/test_ls_force_wd"
+```
+
+创建 `tests/ls_force_wd/test_ls_force_wd.c`：
+
+```c
+/* test_ls_force_wd.c —— 强制套超时判定宿主单测(规范 8-1/8-2)
+ * 构建/运行: sh tests/ls_force_wd/run.sh
+ * 被测: ls_force_wd_expired()(定义于 ls_proto_device_app.h 的纯函数)
+ * 本测只含头文件, 不链接任何固件源文件, 无平台依赖。
+ * 覆盖(边界优先):
+ *   1. 常规边界: 未到 / 恰好等于 / 刚过 超时时长;
+ *   2. uint32 毫秒回绕(规范 8-2 明列必测): 跨回绕的差值须等于真实间隔,
+ *      既不误判超时也不漏判;
+ *   3. 冷启动: last = 0 的初值行为。 */
+#include <stdio.h>
+#include <stdint.h>
+
+#include "ls_proto_device_app.h"
+
+static int s_fail = 0;
+static int s_pass = 0;
+
+#define CHECK_EQ(got, want, msg)                                        \
+    do                                                                  \
+    {                                                                   \
+        if ((long)(got) == (long)(want))                                \
+        {                                                               \
+            s_pass++;                                                   \
+        }                                                               \
+        else                                                            \
+        {                                                               \
+            s_fail++;                                                   \
+            printf("FAIL(line %d): %s got=%ld want=%ld\n",              \
+                   __LINE__, (msg), (long)(got), (long)(want));         \
+        }                                                               \
+    } while (0)
+
+int main(void)
+{
+    /* 1. 常规边界(阈值 5000ms, 判据是"严格大于") */
+    CHECK_EQ(ls_force_wd_expired(1000U, 0U), 0, "1s not expired");
+    CHECK_EQ(ls_force_wd_expired(4999U, 0U), 0, "4999ms not expired");
+    CHECK_EQ(ls_force_wd_expired(5000U, 0U), 0, "exactly 5000 not expired");
+    CHECK_EQ(ls_force_wd_expired(5001U, 0U), 1, "5001ms expired");
+
+    /* 2. uint32 回绕: last 在回绕前, now 在回绕后 */
+    /* last=0xFFFFFF00, now=0x00000100 → 真实间隔 0x200 = 512ms */
+    CHECK_EQ(ls_force_wd_expired(0x00000100U, 0xFFFFFF00U), 0,
+             "wrap 512ms not expired");
+    /* last=0xFFFFFF00, now=0x00001400 → 真实间隔 0x1500 = 5376ms */
+    CHECK_EQ(ls_force_wd_expired(0x00001400U, 0xFFFFFF00U), 1,
+             "wrap 5376ms expired");
+    /* now 恰为 0(回绕瞬间), last=0xFFFFF000 → 真实间隔 4096ms */
+    CHECK_EQ(ls_force_wd_expired(0U, 0xFFFFF000U), 0,
+             "wrapped to zero, 4096ms");
+    /* now 刚过回绕零点 → 真实间隔 5632ms */
+    CHECK_EQ(ls_force_wd_expired(0x00000600U, 0xFFFFF000U), 1,
+             "wrapped past zero, 5632ms");
+
+    /* 3. 冷启动: last 初值 0 */
+    CHECK_EQ(ls_force_wd_expired(0U, 0U), 0, "cold start same tick");
+    CHECK_EQ(ls_force_wd_expired(6000U, 0U), 1, "cold start expired");
+
+    printf("ls_force_wd: %d passed, %d failed\n", s_pass, s_fail);
+    return (s_fail == 0) ? 0 : 1;
+}
+```
+
+- [ ] **Step 4: 运行测试**
+
+Run: `GCC=/c/Qt/Tools/mingw1310_64/bin/gcc.exe sh tests/ls_force_wd/run.sh`
+Expected: `ls_force_wd: 10 passed, 0 failed`
+
+> 若按 Step 1 → Step 2 → Step 3 的顺序执行，本步应**先看到编译失败**（`ls_force_wd_expired` 未定义）再补 Step 2 的实现——那才是 TDD。若顺序颠倒而直接通过，判定逻辑的正确性仍以本测试存在为准。
+
+- [ ] **Step 5: 主循环挂钩**
 
 `I301_code/Core/Src/main.c` 第 146 行位于 `/* USER CODE BEGIN WHILE */`（142 行）与 `/* USER CODE END WHILE */`（147 行）之间，属**用户代码区**（非 CubeMX 生成区），可安全修改（规范 1-8）。
 
@@ -2133,11 +2265,13 @@ void ls_app_force_watchdog_poll(void)
   }
 ```
 
-- [ ] **Step 4: 固件编译（用户执行）**
+- [ ] **Step 6: 固件编译（用户执行）**
 
-同 Task 6 Step 3：在 `I301_code/MDK-ARM/` 全量重编译，期望 0 error 0 warning。
+同 Task 6 Step 3：用 **VS Code EIDE** 全量重编译，期望 0 error 0 warning；编译前三查（源文件列表 / 优化等级 `level-2` / EIDE 实例是否持旧模型）同 Task 6 Step 3。本 Task 未新增固件源文件，清单应不变。
 
-- [ ] **Step 5: 上板验证（用户执行）**
+- [ ] **Step 7: 上板验证（用户执行）**
+
+**前置：JP3 必须断开**（项目规范 0-3 与附录 A 现行约束速览）。
 
 | # | 步骤 | 判据 |
 |---|---|---|
@@ -2146,10 +2280,10 @@ void ls_app_force_watchdog_poll(void)
 | 3 | 保持强制，拔掉 USB，等 5s | 串口日志出现 `force profile timeout, released to auto` |
 | 4 | 拔线后重新上电 | `param_init` 日志显示 `forced=0xFF`（强制态不持久化，spec §6.2） |
 
-- [ ] **Step 6: 提交（须先获用户批准）**
+- [ ] **Step 8: 提交（须先获用户批准）**
 
 ```bash
-git add I301_code/App/ls_proto_device_app.h I301_code/App/ls_proto_device_app.c I301_code/Core/Src/main.c
+git add I301_code/App/ls_proto_device_app.h I301_code/App/ls_proto_device_app.c I301_code/Core/Src/main.c tests/ls_force_wd/run.sh tests/ls_force_wd/test_ls_force_wd.c
 git commit -m "新增强制套超时自解除: 上位机掉线 5s 后自动回到自主判定"
 ```
 
@@ -2159,6 +2293,7 @@ git commit -m "新增强制套超时自解除: 上位机掉线 5s 后自动回�
 
 - [ ] `sh tests/ls_proto/run.sh` 通过，0 failed
 - [ ] `sh tests/param/run.sh` 通过，0 failed
+- [ ] `sh tests/ls_force_wd/run.sh` 通过，0 failed（含 uint32 毫秒回绕用例，规范 8-2）
 - [ ] 固件全量重编译 0 error 0 warning（用户执行）
 - [ ] spec §7.2 的 8 项上板判据通过（用户执行）
 - [ ] **强制套超时自解除上板验证通过**（Task 7 Step 5 的 4 项：保活不误解除、拔线 5s 后自解除、重启不残留强制）

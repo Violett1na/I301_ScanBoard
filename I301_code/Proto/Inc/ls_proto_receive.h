@@ -13,6 +13,9 @@ typedef void (*ls_cb_on_reply_t)(ls_base_reply_t *reply);
 
 typedef void (*ls_cb_on_ctrl_reply_t)(uint16_t typeCMD);
 
+/* 全量回复包回调：收到设备的三套配置与工况快照 */
+typedef void (*ls_cb_on_reply_all_t)(const ls_all_reply_t *reply);
+
 /* 控制数字电位器包回调：返回 0 表示设置成功，非 0 表示失败 */
 typedef int  (*ls_cb_ctrl_rdac_t)(const ls_ctrl_rdac_t *rdac);
 
@@ -21,6 +24,15 @@ typedef int  (*ls_cb_ctrl_set_comp_t)(const ls_ctrl_set_comp_t *comp);
 
 /* 参数保存包回调：返回 0 表示保存成功，非 0 表示失败 */
 typedef int  (*ls_cb_ctrl_save_param_t)(void);
+
+/* 整包写一套配置包回调：返回 0 表示成功，非 0 表示失败 */
+typedef int  (*ls_cb_ctrl_set_profile_t)(const ls_ctrl_set_profile_t *msg);
+
+/* 全量回读请求包回调：返回 0 表示成功，非 0 表示失败 */
+typedef int  (*ls_cb_ctrl_get_all_t)(void);
+
+/* 强制套包回调：返回 0 表示成功，非 0 表示失败 */
+typedef int  (*ls_cb_ctrl_force_t)(const ls_ctrl_force_t *msg);
 
 /* -----------------------------------------------------------------------
  * 回调函数集合结构体
@@ -33,10 +45,14 @@ typedef struct
     ls_cb_ctrl_rdac_t         ctrl_rdac;         /* 控制包：设置数字电位器 */
     ls_cb_ctrl_set_comp_t     ctrl_set_comp;     /* 控制包：设置补偿值 */
     ls_cb_ctrl_save_param_t   ctrl_save_param;   /* 控制包：参数保存 */
+    ls_cb_ctrl_set_profile_t  ctrl_set_profile;  /* 控制包：整包写一套配置 */
+    ls_cb_ctrl_get_all_t      ctrl_get_all;      /* 控制包：请求全量回读 */
+    ls_cb_ctrl_force_t        ctrl_force_profile;/* 控制包：强制套 */
 
     /**  主机  **/
     ls_cb_on_reply_t          on_reply;          /* 回复包：处理回复数据 */
     ls_cb_on_ctrl_reply_t     on_ctrl_reply;     /* 控制包：应答包处理 */
+    ls_cb_on_reply_all_t      on_reply_all;      /* 全量回复包：三套配置+工况 */
 } ls_receive_callbacks_t;
 
 int ls_parse(ls_packet_t *pkt, uint8_t *in_buf, uint16_t in_len);
@@ -50,6 +66,7 @@ int ls_handle(ls_packet_t *pkt);
 int handle_base_query(void);
 int handle_base_reply(ls_packet_t *pkt);
 int handle_base_reset_device(void);
+int handle_base_reply_all(ls_packet_t *pkt);
 
 /* 数据类 */
 /* 控制类 */
@@ -57,6 +74,9 @@ int handle_ctrl_reply(ls_packet_t *pkt);
 int handle_ctrl_rdac(ls_packet_t *pkt);
 int handle_ctrl_set_comp(ls_packet_t *pkt);
 int handle_ctrl_save_param(ls_packet_t *pkt);
+int handle_ctrl_set_profile(ls_packet_t *pkt);
+int handle_ctrl_get_all(ls_packet_t *pkt);
+int handle_ctrl_force_profile(ls_packet_t *pkt);
 
 
 #ifdef __cplusplus

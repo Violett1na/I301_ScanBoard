@@ -11,12 +11,17 @@ extern "C" {
 typedef void (*ls_cb_send_t)(uint8_t *buf, uint16_t len);
 typedef void (*ls_cb_get_device_info_t)(ls_base_reply_t *reply);
 
+/* 全量回复：取三套配置与当前工况(spec §4.2) */
+typedef void (*ls_cb_get_device_info_all_t)(ls_all_reply_t *reply);
+
 
 typedef struct
 {
     ls_cb_send_t      send;           /* 必须注册：字节流发送函数     */
 
     ls_cb_get_device_info_t get_device_info; /* 查询包：获取设备信息 */
+
+    ls_cb_get_device_info_all_t get_device_info_all; /* 全量包：取三套配置+工况 */
 
 } ls_trans_callbacks_t;
 
@@ -31,6 +36,7 @@ void ls_trans_init_callbacks(const ls_trans_callbacks_t *cbs);
 int ls_base_query(void);
 int ls_base_reset_device(void);
 int ls_base_reply(void);
+int ls_base_reply_all(void); /* 全量回复: 设备信息+三套配置+当前工况 */
 
 /* 数据类 */
 
@@ -39,6 +45,9 @@ int ls_ctrl_reply(uint16_t typeCMD);
 int ls_ctrl_rdac(ls_radc_xy_e xy, ls_radc_ch_e ch, uint8_t code);
 int ls_ctrl_set_comp(ls_radc_xy_e xy, int16_t value);
 int ls_ctrl_save_param(void);
+int ls_ctrl_set_profile(uint8_t profile, const ls_profile_t *p); /* 整包写一套 */
+int ls_ctrl_get_all(void);                                       /* 请求全量回读 */
+int ls_ctrl_force_profile(uint8_t profile);                      /* 强制套/解除 */
 
 
 #ifdef __cplusplus
