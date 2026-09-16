@@ -21,13 +21,15 @@
  * 顺序或宽度改动而未同步另一侧, 报文会静默错位, 故以 C99 兼容的负尺寸
  * typedef char 手法(同 param.c 的 param_flash_fit_check)在编译期钉死
  * 尺寸与 comp 成员偏移: 尺寸相等(10B) + comp_x/comp_y 偏移与 param 侧
- * comp/comp.y 逐一相等。 */
+ * comp/comp.y 逐一相等, 且套数相等——套数不等会让 0x0104 少报套数而
+ * 0x0305 仍可寻址, 且无任何编译期报错。 */
 typedef char ls_profile_layout_check[
     ((sizeof(ls_profile_t) == sizeof(param_profile_t)) &&
      (offsetof(ls_profile_t, comp_x) ==
       offsetof(param_profile_t, comp)) &&
      (offsetof(ls_profile_t, comp_y) ==
-      (offsetof(param_profile_t, comp) + offsetof(comp_value_t, y))))
+      (offsetof(param_profile_t, comp) + offsetof(comp_value_t, y))) &&
+     (LS_PROFILE_NUM == PARAM_PROFILE_NUM))
     ? 1 : -1];
 
 
@@ -36,7 +38,7 @@ typedef char ls_profile_layout_check[
  * ----------------------------------------------------------------------- */
 
 /* 最近一次收到上位机整帧的时基(主循环域写, 主循环域读)
- * 超时时长宏 LS_FORCE_TIMEOUT_MS 与纯函数随 .h 定义(Step 1) */
+ * 超时时长宏 LS_FORCE_TIMEOUT_MS 与纯函数随 .h 定义 */
 static uint32_t s_last_host_ms;
 
 /* 发送数据回调，底层经 port_trans(USB BULK)发送 */
@@ -179,10 +181,12 @@ static int app_ctrl_save_param(void)
  * 调用关系: 协议层 handle_ctrl_set_profile 经 ctrl_set_profile 回调调用;
  *   内部调 param_profile_set。
  * 副作用: 经 param 层写内存态; 若写的正是生效套, param 层会一并写
- *   AD5290 硬件码值(间接硬件副作用); 不落 flash; 输出一条 INFO 日志。 */
+ *   AD5290 硬件码值(间接硬件副作用); 不落 flash; 输出一条 INFO 日志
+ *   (日志取参数层落定值, comp 越界回退后不会显示被拒的入参值)。 */
 static int app_ctrl_set_profile(const ls_ctrl_set_profile_t *msg)
 {
-    param_profile_t p;   /* 待写入的一套配置(映射自协议字段) */
+    param_profile_t p;              /* 待写入的一套配置(映射自协议字段) */
+    const param_profile_t *stored;  /* 参数层落定值(comp 可能已被回退) */
 
     if (msg == NULL)
     {
@@ -205,12 +209,15 @@ static int app_ctrl_set_profile(const ls_ctrl_set_profile_t *msg)
         return -1;
     }
 
+    /* 回读落定值再记日志: comp 越界时 param 层已整体回退默认, 直报上面
+     * 的 p 会把被拒值写成"已接受"(联调陷阱)。索引刚写成功, 故非 NULL */
+    stored = param_profile(msg->profile);
     LOG_SYS_INFO("ls - set profile %u: %03u %03u %03u %03u %03u %03u "
                  "comp %d %d",
                  msg->profile,
-                 p.radc.x1, p.radc.x2, p.radc.x3,
-                 p.radc.y1, p.radc.y2, p.radc.y3,
-                 p.comp.x, p.comp.y);
+                 stored->radc.x1, stored->radc.x2, stored->radc.x3,
+                 stored->radc.y1, stored->radc.y2, stored->radc.y3,
+                 stored->comp.x, stored->comp.y);
     return 0;
 }
 

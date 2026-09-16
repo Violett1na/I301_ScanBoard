@@ -7,6 +7,8 @@
 #ifndef LS_PROTO_DEVICE_APP_H
 #define LS_PROTO_DEVICE_APP_H
 
+#include <stdint.h>   /* uint32_t: 时基与超时时长(不依赖间接传递) */
+
 #include "ls_proto_receive.h"
 #include "ls_proto_trans.h"
 
