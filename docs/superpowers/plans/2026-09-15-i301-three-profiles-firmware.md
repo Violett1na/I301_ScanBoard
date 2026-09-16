@@ -8,7 +8,16 @@
 
 **Tech Stack:** C99、STM32G474 固件（四层架构：App / Bsp / Port / Platform）、宿主单测走 MinGW gcc。
 
-**上游 spec:** `docs/superpowers/specs/2026-09-15-i301-three-profiles-design.md`（版本 2026-09-15-B）
+**上游 spec:** `docs/superpowers/specs/2026-09-15-i301-three-profiles-design.md`（版本 2026-09-16-B）
+
+> ⚠️ **本计划已执行完毕，且被 2026-09-16 的整改部分取代——照着本计划重跑会原样重现已修复的缺陷。**
+> 进度与最终结论见 `.superpowers/sdd/progress.md`。以下三处**不要照抄**：
+>
+> 1. **Task 4 的 `0x0306` 测试块** —— `CHECK_EQ(s_tx_count, 2, "acked + full reply")` 等断言已过时。`0x0306` 现**只回 `0x0104` 一帧**，不再回 `0x0301` 应答（spec §4.5 例外）。
+> 2. **Task 6 开头的「本 Task 无宿主单测」** —— Task 7 整改轮已为该文件的 `ls_app_force_watchdog_poll()` 补了桩测试（`tests/ls_force_wd/test_force_release.c`）。
+> 3. **Task 7 Step 1 的注释块** —— 其中 `(Step 1)` 属计划元数据，落码时已删除。
+>
+> 缘由（整支评审发现 C1）：设备发送通路**忙即拒发、不排队**，同一趟主循环内发两帧时第二帧必被丢弃。**任何 handler 不得在同一趟主循环内发两帧**——这是通则，不是 `0x0306` 一处的修补。
 
 ## Global Constraints
 
