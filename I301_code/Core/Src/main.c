@@ -144,6 +144,7 @@ int main(void)
   while (1)
   {
     ls_app_poll();   /* 传输接收成帧 + 协议分发(经 port_trans 契约) */
+    ls_app_force_watchdog_poll();   /* 强制套超时自解除(spec §6.1) */
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

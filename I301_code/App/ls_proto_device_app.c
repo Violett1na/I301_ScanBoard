@@ -10,6 +10,7 @@
 #include "ad5290.h"
 #include "param.h"           /* radc/comp 经 param 接口访问(实体私有于 param.c) */
 #include "mylog.h"
+#include "port_tick.h"       /* port_tick_ms: 强制套看门狗时基 */
 #include <string.h>
 #include <stddef.h>          /* offsetof: 布局静态断言用 */
 
@@ -33,6 +34,10 @@ typedef char ls_profile_layout_check[
 /* -----------------------------------------------------------------------
  * 回调实现：获取设备基础信息
  * ----------------------------------------------------------------------- */
+
+/* 最近一次收到上位机整帧的时基(主循环域写, 主循环域读)
+ * 超时时长宏 LS_FORCE_TIMEOUT_MS 与纯函数随 .h 定义(Step 1) */
+static uint32_t s_last_host_ms;
 
 /* 发送数据回调，底层经 port_trans(USB BULK)发送 */
 static void app_send_data(uint8_t *buf, uint16_t len)
@@ -373,5 +378,24 @@ void ls_app_poll(void)
     {
         ls_parse(&ls_device_pkt, (uint8_t *)buf, flen);
         port_trans_rx_consume(flen);
+
+        /* 收到任何整帧都视为上位机在线, 刷新强制套看门狗 */
+        s_last_host_ms = port_tick_ms();
+    }
+}
+
+/* 强制套看门狗: 未强制则空转; 已强制且超时则解除回自主。
+ * 超时判定走纯函数 ls_force_wd_expired(回绕安全, 已被宿主单测覆盖)。 */
+void ls_app_force_watchdog_poll(void)
+{
+    if (param_forced() == PARAM_PROFILE_NONE)
+    {
+        return;
+    }
+
+    if (ls_force_wd_expired(port_tick_ms(), s_last_host_ms) != 0)
+    {
+        (void)param_force_clear();
+        LOG_SYS_ERROR("force profile timeout, released to auto");
     }
 }
