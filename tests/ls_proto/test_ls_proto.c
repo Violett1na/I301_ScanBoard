@@ -448,7 +448,8 @@ static void test_handle_set_profile(void)
     CHECK_EQ(s_rx_set_profile_n, 0, "no callback on bad len");
 }
 
-/* 接收层 0x0306/0x0307: 全量回读(应答+全量包两帧)与强制套/解除 */
+/* 接收层 0x0306/0x0307: 全量回读(只发一帧全量回复, 无 0x0301 应答)
+ * 与强制套/解除 */
 static void test_handle_get_all_and_force(void)
 {
     static const ls_trans_callbacks_t t_cbs = {
@@ -467,7 +468,8 @@ static void test_handle_get_all_and_force(void)
     uint8_t buf[256];   /* 打包后的待解析字节流 */
     uint16_t len;       /* 当前帧长度 */
 
-    /* 0x0306 → 控制应答 + 全量回复, 共两包 */
+    /* 0x0306 → 只发一帧, 且该帧即全量回复(spec §4.5 例外: 不回
+     * 0x0301 应答; 发送通路忙即拒发, 同趟发两帧第二帧必被丢弃) */
     ls_ctrl_get_all_t req;  /* 回读请求载荷：占位 0xFF */
 
     req.req = 0xFF;
@@ -480,10 +482,12 @@ static void test_handle_get_all_and_force(void)
     reset_tx();
     CHECK_EQ(ls_parse(&pkt, buf, len), 0, "parse get_all");
     CHECK_EQ(s_rx_get_all_n, 1, "get_all callback");
-    CHECK_EQ(s_tx_count, 2, "acked + full reply");
-    CHECK_EQ(tx_unpack(&pkt), 0, "second packet unpack");
+    CHECK_EQ(s_tx_count, 1, "single frame, no ack");
+    memset(&pkt, 0, sizeof(pkt));
+    CHECK_EQ(tx_unpack(&pkt), 0, "sole frame unpack");
     CHECK_EQ(pkt.cmd, (uint8_t)(LS_BASE_REPLY_ALL & 0xFF),
-             "second is reply_all");
+             "sole frame is reply_all");
+    CHECK_EQ(pkt.data_len, sizeof(ls_all_reply_t), "reply_all data_len");
     CHECK_EQ(pkt.data[4], 1, "active in reply_all");
     CHECK_EQ(pkt.data[16], 120, "p1 radc x1 in reply_all");
 

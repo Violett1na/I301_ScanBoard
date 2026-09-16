@@ -344,15 +344,18 @@ int handle_ctrl_set_profile(ls_packet_t *pkt)
 }
 
 /**
- * @brief 设备收到全量回读请求(0x0306)：先回控制应答，再回全量回复包。
+ * @brief 设备收到全量回读请求(0x0306)：只回全量回复包(0x0104)。
  * @param pkt 已解包的协议包，载荷仅 1 字节(req)，内容无实义
  * @return 0 成功；-1 载荷长度不符(不应答) 或回调未注册
  * @note 输入：校验载荷长度后不使用其内容，借命令字触发一次回读。
- * @note 输出：先调 s_cbs->ctrl_get_all 通知应用层，再经发送层依次发出
- *    控制应答帧(0x0306)与全量回复帧(0x0104)。
+ * @note 输出：先调 s_cbs->ctrl_get_all 通知应用层，再经发送层只发出
+ *    全量回复帧(0x0104)；本命令字不回控制应答(spec §4.5 例外)。
+ * @note 例外缘由：0x0104 本身就是 0x0306 的响应，另发 0x0301 属冗余；
+ *    且发送通路忙即拒发，同一趟主循环发两帧时第二帧必被丢弃，故
+ *    「本 handler 不得在同一趟主循环内发两帧」(spec §4.5 通则)。
  * @note 调用关系：ls_handle() 识别 0x0306 后调用；全量回复帧由
  *    发送层 ls_base_reply_all() 组装；主机侧不调用。
- * @note 副作用：读 s_cbs 回调集；经发送层两次占用模块级工作缓冲
+ * @note 副作用：读 s_cbs 回调集；经发送层占用模块级工作缓冲
  *    s_work_pkt/s_work_buf/s_work_len 并触发 send 回调，故不可重入。
  */
 int handle_ctrl_get_all(ls_packet_t *pkt)
@@ -377,8 +380,8 @@ int handle_ctrl_get_all(ls_packet_t *pkt)
         ret = -1;
     }
 
-    /* 按协议返回控制应答包，随后附上全量数据 */
-    (void)ls_ctrl_reply(LS_CTRL_GET_ALL);
+    /* 只发全量回复帧: 本命令字不回 0x0301(spec §4.5 例外),
+     * 且一趟主循环只允许发一帧(发送通路忙即拒发) */
     (void)ls_base_reply_all();
     return ret;
 }

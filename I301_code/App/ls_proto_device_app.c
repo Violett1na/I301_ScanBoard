@@ -42,8 +42,12 @@ static uint32_t s_last_host_ms;
 /* 发送数据回调，底层经 port_trans(USB BULK)发送 */
 static void app_send_data(uint8_t *buf, uint16_t len)
 {
-    /* 忙即放弃本次, 与历史行为一致 */
-    (void)port_trans_send(buf, len);
+    /* 忙即放弃本次, 与历史行为一致; 但失败不得静默——静默吞错会让
+     * 「整帧发不出去」这类缺陷在日志上隐身(spec §4.5) */
+    if (port_trans_send(buf, len) != 0)
+    {
+        LOG_SYS_ERROR("ls - send failed, len=%u", (unsigned)len);
+    }
 }
 
 static void app_reset_device(void)
